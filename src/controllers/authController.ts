@@ -10,6 +10,15 @@ const generateToken = (id: string): string => {
   );
 };
 
+// ─── Formato de respuesta del usuario ────────────────────────────────────────
+const formatUser = (user: any) => ({
+  id:           user._id,
+  name:         user.name,
+  email:        user.email,
+  profile:      user.profile,
+  weeklyBudget: user.weeklyBudget,
+});
+
 // @route  POST /api/auth/register
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -26,13 +35,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     res.status(201).json({
       message: 'Usuario registrado exitosamente',
       token: generateToken(user._id.toString()),
-      user: {
-        id:           user._id,
-        name:         user.name,
-        email:        user.email,
-        profile:      user.profile,
-        weeklyBudget: user.weeklyBudget,
-      },
+      user: formatUser(user),
     });
   } catch (error) {
     console.error('ERROR REGISTER:', error);
@@ -63,13 +66,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     res.status(200).json({
       message: 'Login exitoso',
       token: generateToken(user._id.toString()),
-      user: {
-        id:           user._id,
-        name:         user.name,
-        email:        user.email,
-        profile:      user.profile,
-        weeklyBudget: user.weeklyBudget,
-      },
+      user: formatUser(user),
     });
   } catch (error) {
     console.error('ERROR LOGIN:', error);
@@ -98,31 +95,20 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-// @route  PUT /api/auth/me  — actualiza perfil nutricional completo
+// @route  PUT /api/auth/me
 export const updateMe = async (req: Request, res: Response): Promise<void> => {
   try {
-    const {
-      name,
-      weeklyBudget,
-      profile,
-    } = req.body;
+    const { name, weeklyBudget, profile } = req.body;
 
-    // Construir objeto de actualización solo con los campos enviados
     const updateData: Record<string, any> = {};
     if (name         !== undefined) updateData.name         = name;
     if (weeklyBudget !== undefined) updateData.weeklyBudget = weeklyBudget;
 
-    // Actualizar campos individuales del perfil sin pisar los demás
     if (profile) {
-      if (profile.age           !== undefined) updateData['profile.age']           = profile.age;
-      if (profile.weight        !== undefined) updateData['profile.weight']        = profile.weight;
-      if (profile.height        !== undefined) updateData['profile.height']        = profile.height;
-      if (profile.activityLevel !== undefined) updateData['profile.activityLevel'] = profile.activityLevel;
-      if (profile.goal          !== undefined) updateData['profile.goal']          = profile.goal;
-      if (profile.dietType      !== undefined) updateData['profile.dietType']      = profile.dietType;
-      if (profile.allergies     !== undefined) updateData['profile.allergies']     = profile.allergies;
-      if (profile.dailyCalories !== undefined) updateData['profile.dailyCalories'] = profile.dailyCalories;
-      if (profile.macros        !== undefined) updateData['profile.macros']        = profile.macros;
+      const fields = ['age', 'weight', 'height', 'activityLevel', 'goal', 'dietType', 'allergies', 'dailyCalories', 'macros'];
+      fields.forEach(f => {
+        if (profile[f] !== undefined) updateData[`profile.${f}`] = profile[f];
+      });
     }
 
     const user = await User.findByIdAndUpdate(
@@ -146,47 +132,41 @@ export const updateMe = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-// @route  PUT /api/auth/me/profile  — configura el perfil nutricional inicial (asistente)
+// @route  PUT /api/auth/me/profile — asistente de configuración inicial
 export const setupProfile = async (req: Request, res: Response): Promise<void> => {
   try {
     const { age, weight, height, activityLevel, goal, dietType, allergies, weeklyBudget } = req.body;
 
-    // Calcular calorías diarias con fórmula Harris-Benedict
     const user = await User.findById((req as any).userId);
     if (!user) {
       res.status(404).json({ message: 'Usuario no encontrado' });
       return;
     }
 
+    // Cálculo de calorías con Harris-Benedict
     let bmr = 0;
     if (weight && height && age) {
-      // Fórmula general (sin género por ahora)
       bmr = 10 * weight + 6.25 * height - 5 * age;
     }
 
-    const activityMultiplier: Record<string, number> = {
-      low: 1.2, medium: 1.55, high: 1.9,
-    };
-    const multiplier     = activityMultiplier[activityLevel ?? 'medium'] ?? 1.55;
-    const goalAdjustment: Record<string, number> = {
-      lose: -300, maintain: 0, gain: 300,
-    };
+    const activityMultiplier: Record<string, number> = { low: 1.2, medium: 1.55, high: 1.9 };
+    const goalAdjustment:     Record<string, number> = { lose: -300, maintain: 0, gain: 300 };
+
     const dailyCalories = bmr > 0
-      ? Math.round(bmr * multiplier + (goalAdjustment[goal ?? 'maintain'] ?? 0))
+      ? Math.round(bmr * (activityMultiplier[activityLevel ?? 'medium'] ?? 1.55) + (goalAdjustment[goal ?? 'maintain'] ?? 0))
       : 2000;
 
-    // Distribución de macros estándar
     const macros = {
-      protein: Math.round((dailyCalories * 0.25) / 4),  // 25% proteína
-      carbs:   Math.round((dailyCalories * 0.50) / 4),  // 50% carbos
-      fat:     Math.round((dailyCalories * 0.25) / 9),  // 25% grasa
+      protein: Math.round((dailyCalories * 0.25) / 4),
+      carbs:   Math.round((dailyCalories * 0.50) / 4),
+      fat:     Math.round((dailyCalories * 0.25) / 9),
     };
 
     const updated = await User.findByIdAndUpdate(
       (req as any).userId,
       {
         $set: {
-          weeklyBudget: weeklyBudget ?? user.weeklyBudget,
+          weeklyBudget:            weeklyBudget ?? user.weeklyBudget,
           'profile.age':           age,
           'profile.weight':        weight,
           'profile.height':        height,
