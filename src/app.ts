@@ -2,7 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import connectDB from './config/db';
-import authRoutes from './routes/authRoutes';      
+import authRoutes from './routes/authRoutes';
+import morgan from 'morgan';
 
 
 
@@ -12,6 +13,7 @@ connectDB();
 const app = express();
 
 app.use(cors());
+app.use(morgan('dev'));
 app.use(express.json());
 
 // Rutas
