@@ -1,5 +1,4 @@
 // models/Inventory.model.ts
-
 import { Schema, model, Document, Types } from 'mongoose';
 
 export interface IInventoryItem {
@@ -15,6 +14,8 @@ export interface IInventoryItem {
 export interface IInventory extends Document {
   userId: Types.ObjectId;
   items: IInventoryItem[];
+  createdAt: Date;  // ← Agregar a la interfaz (opcional)
+  updatedAt: Date;  // ← Agregar a la interfaz (opcional)
 }
 
 const InventoryItemSchema = new Schema<IInventoryItem>(
@@ -46,8 +47,11 @@ const InventorySchema = new Schema<IInventory>(
       unique: true 
     },
     items: [InventoryItemSchema]
+    // ❌ NO declarar updatedAt manualmente
   },
-  { timestamps: true }
+  { 
+    timestamps: true // ✅ Mongoose creará createdAt y updatedAt automáticamente
+  }
 );
 
 // Índices para búsquedas frecuentes
