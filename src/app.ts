@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import connectDB from './config/db';
 import authRoutes from './routes/authRoutes';
 import morgan from 'morgan';
+import recipesRoutes from './routes/recipes/recipes.routes';
 
 dotenv.config();
 connectDB();
@@ -33,6 +34,7 @@ app.get('/health', (req, res) => {
 
 // Rutas
 app.use('/api/auth', authRoutes);
+app.use('/api/recipes', recipesRoutes);
 
 // Manejo de errores 404
 app.use((req, res) => {
