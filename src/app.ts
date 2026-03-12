@@ -38,13 +38,10 @@ app.get('/health', (req, res) => {
 
 // Rutas
 app.use('/api/auth', authRoutes);
-<<<<<<< Updated upstream
 app.use('/api/recipes', recipesRoutes);
-=======
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/recipes',   recipeRoutes);
 app.use('/api/dashboard', dashboardRoutes);
->>>>>>> Stashed changes
 
 // Manejo de errores 404
 app.use((req, res) => {
