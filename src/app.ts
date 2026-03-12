@@ -3,6 +3,10 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import connectDB from './config/db';
 import authRoutes from './routes/authRoutes';
+import inventoryRoutes from './routes/inventoryRoutes';
+import recipeRoutes    from './routes/recipeRoutes';
+import dashboardRoutes from './routes/dashboardRoutes';
+
 import morgan from 'morgan';
 import recipesRoutes from './routes/recipes/recipes.routes';
 
@@ -34,7 +38,13 @@ app.get('/health', (req, res) => {
 
 // Rutas
 app.use('/api/auth', authRoutes);
+<<<<<<< Updated upstream
 app.use('/api/recipes', recipesRoutes);
+=======
+app.use('/api/inventory', inventoryRoutes);
+app.use('/api/recipes',   recipeRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+>>>>>>> Stashed changes
 
 // Manejo de errores 404
 app.use((req, res) => {
