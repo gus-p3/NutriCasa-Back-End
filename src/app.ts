@@ -1,55 +1,51 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import morgan from 'morgan';
 import connectDB from './config/db';
-import authRoutes from './routes/authRoutes';
+import authRoutes      from './routes/authRoutes';
 import inventoryRoutes from './routes/inventoryRoutes';
 import recipeRoutes    from './routes/recipeRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
-
-import morgan from 'morgan';
-import recipesRoutes from './routes/recipes/recipes.routes';
 
 dotenv.config();
 connectDB();
 
 const app = express();
 
-// Configuración CORS más específica
 app.use(cors({
-  origin: ['http://localhost:5173', 'https://nutricasa-front-end-production.up.railway.app'], // Agrega tu frontend
+  origin: ['http://localhost:5173', 'https://nutricasa-front-end-production.up.railway.app'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// Middlewares
 app.use(morgan('dev'));
 app.use(express.json());
 
-// Health check endpoint (IMPORTANTE para Railway)
+// Health check
 app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'OK', 
+  res.status(200).json({
+    status: 'OK',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV 
+    environment: process.env.NODE_ENV,
   });
 });
 
 // Rutas
-app.use('/api/auth', authRoutes);
-app.use('/api/recipes', recipesRoutes);
+app.use('/api/auth',      authRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/recipes',   recipeRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 
-// Manejo de errores 404
+// 404
 app.use((req, res) => {
   res.status(404).json({ message: 'Ruta no encontrada' });
 });
 
-// IMPORTANTE: Railway necesita 0.0.0.0
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`⭐ Servidor corriendo en puerto ${PORT}`));
+app.listen(Number(PORT), '0.0.0.0', () =>
+  console.log(`⭐ Servidor corriendo en puerto ${PORT}`)
+);
 
 export default app;
