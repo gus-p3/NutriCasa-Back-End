@@ -8,6 +8,8 @@ export class RecipesController {
             const limit = Number(req.query.limit) || 20;
 
             const result = await RecipesService.getSuggestedRecipes(userId, limit);
+            console.log("Aqui las recetas");
+            console.log(result);
 
             res.json({
                 success: true,
@@ -35,7 +37,7 @@ export class RecipesController {
             const { pagina: _, limite: __, ordenarPor: ___, orden: ____, ...filtrosLimpios } = filters;
 
             const result = await RecipesService.searchRecipes(
-                userId, 
+                userId,
                 filtrosLimpios as any,
                 { pagina, limite, ordenarPor, orden }
             );
