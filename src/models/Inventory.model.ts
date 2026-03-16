@@ -54,9 +54,8 @@ const InventorySchema = new Schema<IInventory>(
   }
 );
 
-// Índices para búsquedas frecuentes
-InventorySchema.index({ userId: 1 });
-InventorySchema.index({ 'items.name': 1 });
+// userId is already indexed via unique:true above.
+// Extra index for expiry lookups:
 InventorySchema.index({ 'items.expiresAt': 1 });
 
 export default model<IInventory>('Inventory', InventorySchema);

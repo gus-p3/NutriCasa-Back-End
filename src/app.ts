@@ -1,51 +1,79 @@
-import express from 'express';
+import express, { Application } from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import morgan from 'morgan';
 import connectDB from './config/db';
-import authRoutes      from './routes/authRoutes';
+
+// Imports de Rutas
+import authRoutes from './routes/authRoutes';
 import inventoryRoutes from './routes/inventoryRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
 import recipesRoutes from './routes/recipes/recipes.routes';
 
-dotenv.config();
-connectDB();
+class Server {
+    public app: Application;
 
-const app = express();
+    constructor() {
+        dotenv.config();
+        this.app = express();
+        this.config();
+        this.routes();
+    }
 
-app.use(cors({
-  origin: ['http://localhost:5173', 'https://nutricasa-front-end-production.up.railway.app'],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+    private async config(): Promise<void> {
+        // Configuraciones de puerto
+        this.app.set('port', process.env.PORT || 3000);
 
-app.use(morgan('dev'));
-app.use(express.json());
+        // Middlewares
+        this.app.use(morgan('dev'));
+        this.app.use(cors({
+            origin: ['http://localhost:5173', 'https://nutricasa-front-end-production.up.railway.app'],
+            credentials: true,
+            methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+            allowedHeaders: ['Content-Type', 'Authorization'],
+        }));
+        this.app.use(express.json({ limit: '30mb' })); 
+        this.app.use(express.urlencoded({ extended: false }));
+        this.app.use(cookieParser());
+    }
 
-// Health check
-app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV,
-  });
-});
+    private routes(): void {
+        // Health check
+        this.app.get('/health', (req, res) => {
+            res.status(200).json({
+                status: 'OK',
+                timestamp: new Date().toISOString(),
+                environment: process.env.NODE_ENV,
+            });
+        });
 
-// Rutas
-app.use('/api/auth',      authRoutes);
-app.use('/api/inventory', inventoryRoutes);
-app.use('/api/recipes',   recipesRoutes);
-app.use('/api/dashboard', dashboardRoutes);
+        // Rutas de la API
+        this.app.use('/api/auth', authRoutes);
+        this.app.use('/api/inventory', inventoryRoutes);
+        this.app.use('/api/recipes', recipesRoutes);
+        this.app.use('/api/dashboard', dashboardRoutes);
 
-// 404
-app.use((req, res) => {
-  res.status(404).json({ message: 'Ruta no encontrada' });
-});
+        // Manejo de rutas no encontradas (404)
+        this.app.use((req, res) => {
+            res.status(404).json({ message: 'Ruta no encontrada en Nutricasa' });
+        });
+    }
 
-const PORT = process.env.PORT || 3000;
-app.listen(Number(PORT), '0.0.0.0', () =>
-  console.log(`⭐ Servidor corriendo en puerto ${PORT}`)
-);
+    public async start(): Promise<void> {
+        try {
+            await connectDB();
+            const PORT = this.app.get('port');
+            this.app.listen(PORT, '0.0.0.0', () => {
+                console.log(`⭐ Servidor Nutricasa corriendo en puerto ${PORT}`);
+            });
+        } catch (error) {
+            console.error('❌ Error al iniciar el servidor:', error);
+        }
+    }
+}
 
-export default app;
+const server = new Server();
+server.start();
+
+export default server.app;
