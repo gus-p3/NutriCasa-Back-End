@@ -1,35 +1,33 @@
 import { Request, Response } from 'express';
+import { Types } from 'mongoose';
 import Inventory from '../models/Inventory.model';
 
+// ── Helper: cast JWT string userId → ObjectId ─────────────────────────────────
+const toObjectId = (id: string) => new Types.ObjectId(id);
+
 // @route  GET /api/inventory
-// Devuelve items[] ordenados por category
 export const getInventory = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = (req as any).userId;
+    const userId = toObjectId((req as any).userId);
 
     let inventory = await Inventory.findOne({ userId });
 
-    // Si no existe aún, crear inventario vacío
     if (!inventory) {
       inventory = await Inventory.create({ userId, items: [] });
     }
 
-    // Ordenar items por category
     const sortedItems = [...inventory.items].sort((a, b) =>
       a.category.localeCompare(b.category)
     );
 
-    res.status(200).json({
-      total: sortedItems.length,
-      items: sortedItems,
-    });
+    res.status(200).json({ total: sortedItems.length, items: sortedItems });
   } catch (error) {
-    res.status(500).json({
-      message: 'Error al obtener el inventario',
-      error: error instanceof Error ? error.message : error,
-    });
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('ERROR GET INVENTORY:', msg);
+    res.status(500).json({ message: 'Error al obtener el inventario', error: msg });
   }
 };
+
 
 // @route  POST /api/inventory
 // Agrega un ingrediente con $push a items[]
@@ -84,9 +82,11 @@ export const addItem = async (req: Request, res: Response): Promise<void> => {
       item: newItem,
     });
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('ERROR ADD ITEM INVENTORY:', msg);
     res.status(500).json({
       message: 'Error al agregar ingrediente',
-      error: error instanceof Error ? error.message : error,
+      error: msg,
     });
   }
 };
@@ -131,9 +131,11 @@ export const updateItem = async (req: Request, res: Response): Promise<void> => 
       item: updatedItem,
     });
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('ERROR UPDATE ITEM INVENTORY:', msg);
     res.status(500).json({
       message: 'Error al actualizar ingrediente',
-      error: error instanceof Error ? error.message : error,
+      error: msg,
     });
   }
 };
@@ -160,9 +162,11 @@ export const deleteItem = async (req: Request, res: Response): Promise<void> => 
 
     res.status(200).json({ message: 'Ingrediente eliminado' });
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('ERROR DELETE ITEM INVENTORY:', msg);
     res.status(500).json({
       message: 'Error al eliminar ingrediente',
-      error: error instanceof Error ? error.message : error,
+      error: msg,
     });
   }
 };

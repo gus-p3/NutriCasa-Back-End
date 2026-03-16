@@ -8,9 +8,6 @@ export class RecipesController {
             const limit = Number(req.query.limit) || 20;
 
             const result = await RecipesService.getSuggestedRecipes(userId, limit);
-            console.log("Aqui las recetas");
-            console.log(result);
-
             res.json({
                 success: true,
                 data: result
