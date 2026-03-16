@@ -82,9 +82,11 @@ export const addItem = async (req: Request, res: Response): Promise<void> => {
       item: newItem,
     });
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('ERROR ADD ITEM INVENTORY:', msg);
     res.status(500).json({
       message: 'Error al agregar ingrediente',
-      error: error instanceof Error ? error.message : error,
+      error: msg,
     });
   }
 };
@@ -129,9 +131,11 @@ export const updateItem = async (req: Request, res: Response): Promise<void> => 
       item: updatedItem,
     });
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('ERROR UPDATE ITEM INVENTORY:', msg);
     res.status(500).json({
       message: 'Error al actualizar ingrediente',
-      error: error instanceof Error ? error.message : error,
+      error: msg,
     });
   }
 };
@@ -158,9 +162,11 @@ export const deleteItem = async (req: Request, res: Response): Promise<void> => 
 
     res.status(200).json({ message: 'Ingrediente eliminado' });
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('ERROR DELETE ITEM INVENTORY:', msg);
     res.status(500).json({
       message: 'Error al eliminar ingrediente',
-      error: error instanceof Error ? error.message : error,
+      error: msg,
     });
   }
 };
