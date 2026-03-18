@@ -176,6 +176,7 @@ export class RecipesService {
         const user = await User.findById(userId).lean();
         if (!user) throw new Error('Usuario no encontrado');
 
+
         const inventory = await Inventory.findOne({ userId }).lean();
 
         // 2. Construir filtros base según perfil

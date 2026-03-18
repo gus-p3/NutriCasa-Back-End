@@ -1,25 +1,53 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import User from '../models/User.model';
+import RefreshToken from '../models/RefreshToken.model';
 
-const generateToken = (id: string): string => {
-  return jwt.sign(
-    { id },
-    process.env.JWT_SECRET as string,
-    { expiresIn: '7d' }
-  );
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const ACCESS_TOKEN_EXPIRY  = '15m';
+const REFRESH_TOKEN_EXPIRY = '7d';
+const REFRESH_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
+
+const REFRESH_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'strict' as const,
+  maxAge: REFRESH_TOKEN_EXPIRY_MS,
+  path: '/',
 };
 
-// ─── Formato de respuesta del usuario ────────────────────────────────────────
+const hash = (token: string) =>
+  crypto.createHash('sha256').update(token).digest('hex');
+
+const generateAccessToken = (id: string, role: string): string =>
+  jwt.sign({ id, role }, process.env.JWT_SECRET as string, { expiresIn: ACCESS_TOKEN_EXPIRY });
+
+const generateRefreshToken = (id: string): string =>
+  jwt.sign({ id }, process.env.JWT_REFRESH_SECRET as string, { expiresIn: REFRESH_TOKEN_EXPIRY });
+
+/** Save a refresh token to the DB (hashed) and set it in an httpOnly cookie. */
+const issueRefreshToken = async (res: Response, userId: string): Promise<void> => {
+  const rawToken = generateRefreshToken(userId);
+  const tokenHash = hash(rawToken);
+  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_MS);
+
+  await RefreshToken.create({ userId, tokenHash, expiresAt });
+  res.cookie('refreshToken', rawToken, REFRESH_COOKIE_OPTIONS);
+};
+
 const formatUser = (user: any) => ({
   id:           user._id,
   name:         user.name,
   email:        user.email,
+  role:         user.role,
   profile:      user.profile,
   weeklyBudget: user.weeklyBudget,
 });
 
-// @route  POST /api/auth/register
+// ─── Register ─────────────────────────────────────────────────────────────────
+
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, email, password } = req.body;
@@ -31,131 +59,168 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     }
 
     const user = await User.create({ name, email, password });
+    const accessToken = generateAccessToken(user._id.toString(), user.role);
+    await issueRefreshToken(res, user._id.toString());
 
-    res.status(201).json({
-      message: 'Usuario registrado exitosamente',
-      token: generateToken(user._id.toString()),
-      user: formatUser(user),
-    });
+    res.status(201).json({ message: 'Usuario registrado exitosamente', token: accessToken, user: formatUser(user) });
   } catch (error) {
     console.error('ERROR REGISTER:', error);
-    res.status(500).json({
-      message: 'Error en el servidor',
-      error: error instanceof Error ? error.message : error,
-    });
+    res.status(500).json({ message: 'Error en el servidor', error: error instanceof Error ? error.message : error });
   }
 };
 
-// @route  POST /api/auth/login
+// ─── Login ────────────────────────────────────────────────────────────────────
+
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
-    if (!user) {
+    if (!user || !(await user.comparePassword(password))) {
       res.status(401).json({ message: 'Credenciales inválidas' });
       return;
     }
 
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      res.status(401).json({ message: 'Credenciales inválidas' });
-      return;
-    }
+    const accessToken = generateAccessToken(user._id.toString(), user.role);
+    await issueRefreshToken(res, user._id.toString());
 
-    res.status(200).json({
-      message: 'Login exitoso',
-      token: generateToken(user._id.toString()),
-      user: formatUser(user),
-    });
+    res.status(200).json({ message: 'Login exitoso', token: accessToken, user: formatUser(user) });
   } catch (error) {
     console.error('ERROR LOGIN:', error);
-    res.status(500).json({
-      message: 'Error en el servidor',
-      error: error instanceof Error ? error.message : error,
-    });
+    res.status(500).json({ message: 'Error en el servidor', error: error instanceof Error ? error.message : error });
   }
 };
 
-// @route  GET /api/auth/me
+// ─── Refresh token ────────────────────────────────────────────────────────────
+
+export const refreshToken = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const rawToken = req.cookies?.refreshToken;
+
+    if (!rawToken) {
+      res.status(401).json({ message: 'No hay refresh token' });
+      return;
+    }
+
+    // 1. Verify JWT signature first (cheap check)
+    let decoded: { id: string };
+    try {
+      decoded = jwt.verify(rawToken, process.env.JWT_REFRESH_SECRET as string) as { id: string };
+    } catch {
+      res.status(401).json({ message: 'Refresh token inválido o expirado' });
+      return;
+    }
+
+    // 2. Look up hashed token in DB
+    const tokenHash = hash(rawToken);
+    const storedToken = await RefreshToken.findOne({ tokenHash });
+
+    if (!storedToken) {
+      // Token not in DB — possible reuse attack. Revoke ALL tokens for this user.
+      console.warn(`⚠️  Possible refresh token reuse for userId: ${decoded.id}`);
+      await RefreshToken.deleteMany({ userId: decoded.id });
+      res.clearCookie('refreshToken', { ...REFRESH_COOKIE_OPTIONS, maxAge: 0 });
+      res.status(401).json({ message: 'Token inválido. Por seguridad, inicia sesión de nuevo.' });
+      return;
+    }
+
+    // 3. Load user
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      await RefreshToken.deleteMany({ userId: decoded.id });
+      res.status(401).json({ message: 'Usuario no encontrado' });
+      return;
+    }
+
+    // 4. Rotate: delete old token, issue new pair
+    await RefreshToken.deleteOne({ _id: storedToken._id });
+
+    const newAccessToken = generateAccessToken(user._id.toString(), user.role);
+    await issueRefreshToken(res, user._id.toString());
+
+    res.status(200).json({ token: newAccessToken, user: formatUser(user) });
+  } catch (error) {
+    console.error('ERROR REFRESH:', error);
+    res.status(500).json({ message: 'Error en el servidor', error: error instanceof Error ? error.message : error });
+  }
+};
+
+// ─── Logout (single device) ───────────────────────────────────────────────────
+
+export const logoutServer = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const rawToken = req.cookies?.refreshToken;
+    if (rawToken) {
+      await RefreshToken.deleteOne({ tokenHash: hash(rawToken) });
+    }
+    res.clearCookie('refreshToken', { ...REFRESH_COOKIE_OPTIONS, maxAge: 0 });
+    res.status(200).json({ message: 'Sesión cerrada' });
+  } catch (error) {
+    console.error('ERROR LOGOUT:', error);
+    res.status(500).json({ message: 'Error en el servidor' });
+  }
+};
+
+// ─── Logout all devices ───────────────────────────────────────────────────────
+
+export const logoutAll = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = (req as any).userId;
+    await RefreshToken.deleteMany({ userId });
+    res.clearCookie('refreshToken', { ...REFRESH_COOKIE_OPTIONS, maxAge: 0 });
+    res.status(200).json({ message: 'Todas las sesiones cerradas' });
+  } catch (error) {
+    console.error('ERROR LOGOUT ALL:', error);
+    res.status(500).json({ message: 'Error en el servidor' });
+  }
+};
+
+// ─── /me routes (unchanged) ───────────────────────────────────────────────────
+
 export const getMe = async (req: Request, res: Response): Promise<void> => {
   try {
     const user = await User.findById((req as any).userId).select('-password');
-    if (!user) {
-      res.status(404).json({ message: 'Usuario no encontrado' });
-      return;
-    }
+    if (!user) { res.status(404).json({ message: 'Usuario no encontrado' }); return; }
     res.status(200).json({ user });
   } catch (error) {
-    console.error('ERROR GET ME:', error);
-    res.status(500).json({
-      message: 'Error en el servidor',
-      error: error instanceof Error ? error.message : error,
-    });
+    res.status(500).json({ message: 'Error en el servidor', error: error instanceof Error ? error.message : error });
   }
 };
 
-// @route  PUT /api/auth/me
 export const updateMe = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, weeklyBudget, profile } = req.body;
-
     const updateData: Record<string, any> = {};
     if (name         !== undefined) updateData.name         = name;
     if (weeklyBudget !== undefined) updateData.weeklyBudget = weeklyBudget;
-
     if (profile) {
-      const fields = ['age', 'weight', 'height', 'activityLevel', 'goal', 'dietType', 'allergies', 'dailyCalories', 'macros'];
-      fields.forEach(f => {
-        if (profile[f] !== undefined) updateData[`profile.${f}`] = profile[f];
-      });
+      ['age','weight','height','activityLevel','goal','dietType','allergies','dailyCalories','macros']
+        .forEach(f => { if (profile[f] !== undefined) updateData[`profile.${f}`] = profile[f]; });
     }
-
     const user = await User.findByIdAndUpdate(
-      (req as any).userId,
-      { $set: updateData },
-      { new: true, runValidators: true }
+      (req as any).userId, { $set: updateData }, { new: true, runValidators: true }
     ).select('-password');
-
-    if (!user) {
-      res.status(404).json({ message: 'Usuario no encontrado' });
-      return;
-    }
-
+    if (!user) { res.status(404).json({ message: 'Usuario no encontrado' }); return; }
     res.status(200).json({ message: 'Perfil actualizado', user });
   } catch (error) {
-    console.error('ERROR UPDATE ME:', error);
-    res.status(500).json({
-      message: 'Error en el servidor',
-      error: error instanceof Error ? error.message : error,
-    });
+    res.status(500).json({ message: 'Error en el servidor', error: error instanceof Error ? error.message : error });
   }
 };
 
-// @route  PUT /api/auth/me/profile — asistente de configuración inicial
 export const setupProfile = async (req: Request, res: Response): Promise<void> => {
   try {
     const { age, weight, height, activityLevel, goal, dietType, allergies, weeklyBudget } = req.body;
-
     const user = await User.findById((req as any).userId);
-    if (!user) {
-      res.status(404).json({ message: 'Usuario no encontrado' });
-      return;
-    }
+    if (!user) { res.status(404).json({ message: 'Usuario no encontrado' }); return; }
 
-    // Cálculo de calorías con Harris-Benedict
     let bmr = 0;
-    if (weight && height && age) {
-      bmr = 10 * weight + 6.25 * height - 5 * age;
-    }
+    if (weight && height && age) bmr = 10 * weight + 6.25 * height - 5 * age;
 
-    const activityMultiplier: Record<string, number> = { low: 1.2, medium: 1.55, high: 1.9 };
-    const goalAdjustment:     Record<string, number> = { lose: -300, maintain: 0, gain: 300 };
-
+    const actMult: Record<string, number> = { low: 1.2, medium: 1.55, high: 1.9 };
+    const goalAdj: Record<string, number> = { lose: -300, maintain: 0, gain: 300 };
     const dailyCalories = bmr > 0
-      ? Math.round(bmr * (activityMultiplier[activityLevel ?? 'medium'] ?? 1.55) + (goalAdjustment[goal ?? 'maintain'] ?? 0))
+      ? Math.round(bmr * (actMult[activityLevel ?? 'medium'] ?? 1.55) + (goalAdj[goal ?? 'maintain'] ?? 0))
       : 2000;
-
     const macros = {
       protein: Math.round((dailyCalories * 0.25) / 4),
       carbs:   Math.round((dailyCalories * 0.50) / 4),
@@ -164,33 +229,18 @@ export const setupProfile = async (req: Request, res: Response): Promise<void> =
 
     const updated = await User.findByIdAndUpdate(
       (req as any).userId,
-      {
-        $set: {
-          weeklyBudget:            weeklyBudget ?? user.weeklyBudget,
-          'profile.age':           age,
-          'profile.weight':        weight,
-          'profile.height':        height,
-          'profile.activityLevel': activityLevel,
-          'profile.goal':          goal,
-          'profile.dietType':      dietType,
-          'profile.allergies':     allergies ?? [],
-          'profile.dailyCalories': dailyCalories,
-          'profile.macros':        macros,
-        },
-      },
+      { $set: {
+        weeklyBudget: weeklyBudget ?? user.weeklyBudget,
+        'profile.age': age, 'profile.weight': weight, 'profile.height': height,
+        'profile.activityLevel': activityLevel, 'profile.goal': goal,
+        'profile.dietType': dietType, 'profile.allergies': allergies ?? [],
+        'profile.dailyCalories': dailyCalories, 'profile.macros': macros,
+      }},
       { new: true, runValidators: true }
     ).select('-password');
 
-    res.status(200).json({
-      message: 'Perfil nutricional configurado',
-      user: updated,
-      calculated: { dailyCalories, macros },
-    });
+    res.status(200).json({ message: 'Perfil nutricional configurado', user: updated, calculated: { dailyCalories, macros } });
   } catch (error) {
-    console.error('ERROR SETUP PROFILE:', error);
-    res.status(500).json({
-      message: 'Error en el servidor',
-      error: error instanceof Error ? error.message : error,
-    });
+    res.status(500).json({ message: 'Error en el servidor', error: error instanceof Error ? error.message : error });
   }
 };
