@@ -1,3 +1,4 @@
+//recipes.routes.ts
 import { Router } from 'express';
 import { protect } from '../../middlewares/authMiddleware';
 import { RecipesController } from '../../controllers/recipes/recipes.controller';
@@ -24,6 +25,13 @@ class RecipesRoutes {
       '/search',
       protect,
       RecipesController.searchRecipes
+    );
+
+    // GET /api/recipes/:id/alternatives?ingredientName=... - Sustitución de ingredientes
+    this.router.get(
+      '/:id/alternatives',
+      protect,
+      RecipesController.getIngredientAlternatives
     );
 
     // GET /api/recipes/:id - Obtener receta por ID (básico)
