@@ -174,4 +174,38 @@ export class RecipesController {
             });
         }
     }
+
+    static async getIngredientAlternatives(req: Request, res: Response) {
+        try {
+            const id             = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+            const userId         = (req as any).userId;
+            const ingredientName = req.query.ingredientName as string;
+
+            if (!ingredientName) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'El parámetro ingredientName es requerido',
+                });
+            }
+
+            const result = await RecipesService.getIngredientAlternatives(id, userId, ingredientName);
+
+            res.json({
+                success: true,
+                data:    result,
+            });
+        } catch (error: any) {
+            console.error(error);
+            if (error.message === 'Receta no encontrada' || error.message?.includes('no encontrado')) {
+                return res.status(404).json({
+                    success: false,
+                    message: error.message,
+                });
+            }
+            res.status(500).json({
+                success: false,
+                message: error.message || 'Error al obtener alternativas',
+            });
+        }
+    }
 }
