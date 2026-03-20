@@ -10,6 +10,8 @@ import authRoutes from './routes/authRoutes';
 import inventoryRoutes from './routes/inventoryRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
 import recipesRoutes from './routes/recipes/recipes.routes';
+import feedbackRoutes from './routes/feedback/feedback.routes';
+
 
 class Server {
     public app: Application;
@@ -53,6 +55,8 @@ class Server {
         this.app.use('/api/inventory', inventoryRoutes);
         this.app.use('/api/recipes', recipesRoutes);
         this.app.use('/api/dashboard', dashboardRoutes);
+        this.app.use('/api/feedback', feedbackRoutes);
+
 
         // Manejo de rutas no encontradas (404)
         this.app.use((req, res) => {
