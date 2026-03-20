@@ -10,6 +10,8 @@ import authRoutes from './routes/authRoutes';
 import inventoryRoutes from './routes/inventoryRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
 import recipesRoutes from './routes/recipes/recipes.routes';
+import feedbackRoutes from './routes/feedback/feedback.routes';
+
 import aiRoutes from './routes/iaRecipe/recipe_ia.routes';
 
 class Server {
@@ -54,6 +56,8 @@ class Server {
         this.app.use('/api/inventory', inventoryRoutes);
         this.app.use('/api/recipes', recipesRoutes);
         this.app.use('/api/dashboard', dashboardRoutes);
+        this.app.use('/api/feedback', feedbackRoutes);
+
         this.app.use('/api/ai', aiRoutes);
 
         // Manejo de rutas no encontradas (404)

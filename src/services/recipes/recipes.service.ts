@@ -1,3 +1,4 @@
+//recipes.services.ts
 import User from '../../models/User.model';
 import Inventory from '../../models/Inventory.model';
 import Recipe from '../../models/Recipe.model';
@@ -546,6 +547,88 @@ export class RecipesService {
                 unit: i.unit
             })),
             ingredients: ingredientsStatus
+        };
+    }
+
+    // ==================== SUSTITUCIÓN DE INGREDIENTES ====================
+
+    /**
+     * Obtiene las alternativas de un ingrediente con disponibilidad en la alacena
+     * GET /api/recipes/:id/alternatives?ingredientName=...
+     */
+    static async getIngredientAlternatives(recipeId: string, userId: string, ingredientName: string) {
+        // 1. Obtener la receta
+        const recipe = await Recipe.findById(recipeId).lean();
+        if (!recipe) throw new Error('Receta no encontrada');
+
+        // 2. Buscar el ingrediente en la receta (con regex para tildes/plurales)
+        const searchRegex = this.createIngredientRegex(ingredientName);
+        const ingredient  = recipe.ingredients.find(ing =>
+            searchRegex.test(this.normalizeIngredientName(ing.name))
+        );
+
+        if (!ingredient) {
+            throw new Error(`Ingrediente "${ingredientName}" no encontrado en esta receta`);
+        }
+
+        // 3. Si no tiene alternativas registradas
+        if (!ingredient.alternatives || ingredient.alternatives.length === 0) {
+            return {
+                ingredientName:   ingredient.name,
+                requiredQuantity: ingredient.quantity,
+                unit:             ingredient.unit,
+                alternatives:     [],
+                message:          'Este ingrediente no tiene sustitutos registrados',
+            };
+        }
+
+        // 4. Obtener inventario del usuario
+        const inventory = await Inventory.findOne({ userId }).lean();
+        const items      = inventory?.items || [];
+
+        // 5. Evaluar disponibilidad de cada alternativa en la alacena
+        const alternativesWithStatus = ingredient.alternatives.map(alt => {
+            const altRegex    = this.createIngredientRegex(alt);
+            const altItem     = items.find(item =>
+                altRegex.test(this.normalizeIngredientName(item.name))
+            );
+
+            const available   = altItem?.quantity ?? 0;
+            const unit        = altItem?.unit     ?? '—';
+
+            // Convertir si las unidades son distintas
+            const convertedQty = altItem
+                ? this.convertQuantity(available, altItem.unit, ingredient.unit)
+                : null;
+
+            let status: 'green' | 'yellow' | 'red' = 'red';
+            if (convertedQty !== null && convertedQty >= ingredient.quantity) {
+                status = 'green';
+            } else if (convertedQty !== null && convertedQty > 0) {
+                status = 'yellow';
+            }
+
+            return {
+                name:             alt,
+                availableQuantity: available > 0 ? available : undefined,
+                unit,
+                status,
+                inPantry:         available > 0,
+                isSufficient:     status === 'green',
+            };
+        });
+
+        // 6. Ordenar: green → yellow → red
+        const order = { green: 0, yellow: 1, red: 2 };
+        alternativesWithStatus.sort((a, b) => order[a.status] - order[b.status]);
+
+        return {
+            ingredientName:   ingredient.name,
+            requiredQuantity: ingredient.quantity,
+            unit:             ingredient.unit,
+            totalAlternatives: alternativesWithStatus.length,
+            availableInPantry: alternativesWithStatus.filter(a => a.inPantry).length,
+            alternatives:      alternativesWithStatus,
         };
     }
 }
