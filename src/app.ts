@@ -12,6 +12,7 @@ import dashboardRoutes from './routes/dashboardRoutes';
 import recipesRoutes from './routes/recipes/recipes.routes';
 import feedbackRoutes from './routes/feedback/feedback.routes';
 
+import aiRoutes from './routes/iaRecipe/recipe_ia.routes';
 
 class Server {
     public app: Application;
@@ -57,6 +58,7 @@ class Server {
         this.app.use('/api/dashboard', dashboardRoutes);
         this.app.use('/api/feedback', feedbackRoutes);
 
+        this.app.use('/api/ai', aiRoutes);
 
         // Manejo de rutas no encontradas (404)
         this.app.use((req, res) => {
