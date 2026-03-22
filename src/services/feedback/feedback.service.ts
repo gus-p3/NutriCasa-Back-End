@@ -9,7 +9,9 @@ interface IIngredientUsedInput {
   name: string;
   quantityUsed: number;
   unit: string;
-  leftover: number;
+  isFromPantry?: boolean;
+  saveLeftover?: boolean;
+  leftoverQuantity?: number;
 }
 
 interface IFeedbackInput {
@@ -62,20 +64,53 @@ export class FeedbackService {
       mealTime,
     });
 
-    // ── 2. Descontar ingredientes en inventories con $inc posicional ──────────
+    // ── 2. Actualizar inventario (descontar usados o guardar sobrantes) ────────
     const inventory = await Inventory.findOne({ userId });
     if (inventory) {
+      
+      const normalizeString = (str: string) => {
+        if (!str) return '';
+        let s = str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        if (s.endsWith('es') && s.length > 3) s = s.slice(0, -2);
+        else if (s.endsWith('s') && s.length > 2) s = s.slice(0, -1);
+        return s;
+      };
+
       for (const used of ingredientsUsed) {
-        const item = inventory.items.find(
-          i => i.name.toLowerCase() === used.name.toLowerCase()
+        // Encuentra el coincidente exacto o normalizado
+        const usedNameNorm = normalizeString(used.name);
+        const inventoryItem = inventory.items.find(
+          item => normalizeString(item.name) === usedNameNorm
         );
-        if (item && item._id) {
-          await Inventory.findOneAndUpdate(
-            { userId, 'items._id': item._id },
-            { $inc: { 'items.$.quantity': -(used.quantityUsed - used.leftover) } }
-          );
+
+        // Procesar ingredientes de la despensa
+        if (used.isFromPantry) {
+          if (inventoryItem) {
+            inventoryItem.quantity -= used.quantityUsed;
+            if (inventoryItem.quantity < 0) inventoryItem.quantity = 0;
+          }
+        } else {
+          // No es de alacena: guardamos el sobrante si el usuario lo indicó
+          if (used.saveLeftover && used.leftoverQuantity && used.leftoverQuantity > 0) {
+            if (inventoryItem) {
+              inventoryItem.quantity += used.leftoverQuantity;
+            } else {
+              // Si no la conocemos, forzamos un valor por defecto para unidad/categoría válido
+              const validUnits = ['g', 'kg', 'ml', 'l', 'piezas', 'tazas'];
+              const safeUnit = validUnits.includes(used.unit) ? used.unit : 'piezas';
+              
+              inventory.items.push({
+                name: used.name,
+                quantity: used.leftoverQuantity,
+                unit: safeUnit as any,
+                category: 'otro',
+                addedAt: new Date(),
+              } as any);
+            }
+          }
         }
       }
+      await inventory.save();
     }
 
     // ── 3. Actualizar nutritionlog del día actual ─────────────────────────────
