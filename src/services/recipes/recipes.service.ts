@@ -75,16 +75,34 @@ export class RecipesService {
         fromUnit: string,
         toUnit: string
     ): number | null {
+        // Normalizar unidades comunes
+        const normalizeUnit = (u: string) => {
+            if (!u) return '';
+            const low = u.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+            if (['pieza', 'piezas', 'pza', 'pzas', 'pz'].includes(low)) return 'piezas';
+            if (['taza', 'tazas', 'tz', 'tzs'].includes(low)) return 'tazas';
+            if (['cucharada', 'cucharadas', 'cda', 'cdas'].includes(low)) return 'cucharadas';
+            if (['cucharadita', 'cucharaditas', 'cdita', 'cditas'].includes(low)) return 'cucharaditas';
+            if (['gramo', 'gramos', 'gr', 'g'].includes(low)) return 'g';
+            if (['kilo', 'kilos', 'kilogramo', 'kilogramos', 'kg'].includes(low)) return 'kg';
+            if (['mililitro', 'mililitros', 'ml'].includes(low)) return 'ml';
+            if (['litro', 'litros', 'l'].includes(low)) return 'l';
+            return low;
+        };
+
+        const from = normalizeUnit(fromUnit);
+        const to = normalizeUnit(toUnit);
+
         // Misma unidad
-        if (fromUnit === toUnit) return quantity;
+        if (from === to) return quantity;
 
         // Conversiones de masa
-        if (fromUnit === 'kg' && toUnit === 'g') return quantity * 1000;
-        if (fromUnit === 'g' && toUnit === 'kg') return quantity / 1000;
+        if (from === 'kg' && to === 'g') return quantity * 1000;
+        if (from === 'g' && to === 'kg') return quantity / 1000;
 
         // Conversiones de volumen
-        if (fromUnit === 'l' && toUnit === 'ml') return quantity * 1000;
-        if (fromUnit === 'ml' && toUnit === 'l') return quantity / 1000;
+        if (from === 'l' && to === 'ml') return quantity * 1000;
+        if (from === 'ml' && to === 'l') return quantity / 1000;
 
         // Unidades no convertibles
         return null;
