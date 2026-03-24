@@ -12,10 +12,7 @@ import dashboardRoutes from './routes/dashboardRoutes';
 import recipesRoutes from './routes/recipes/recipes.routes';
 import feedbackRoutes from './routes/feedback/feedback.routes';
 import historyRoutes from './routes/history/history.routes';
-
-
 import aiRoutes from './routes/iaRecipe/recipe_ia.routes';
-import historyRoutes from './routes/history.routes';
 
 class Server {
     public app: Application;
