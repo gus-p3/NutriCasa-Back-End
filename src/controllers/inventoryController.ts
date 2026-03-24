@@ -170,3 +170,5 @@ export const deleteItem = async (req: Request, res: Response): Promise<void> => 
     });
   }
 };
+
+export const addInventoryItem = addItem;

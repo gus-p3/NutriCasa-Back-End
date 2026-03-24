@@ -15,6 +15,7 @@ import historyRoutes from './routes/history/history.routes';
 
 
 import aiRoutes from './routes/iaRecipe/recipe_ia.routes';
+import historyRoutes from './routes/history.routes';
 
 class Server {
     public app: Application;
@@ -60,7 +61,6 @@ class Server {
         this.app.use('/api/dashboard', dashboardRoutes);
         this.app.use('/api/feedback', feedbackRoutes);
         this.app.use('/api/history', historyRoutes);
-
         this.app.use('/api/ai', aiRoutes);
 
         // Manejo de rutas no encontradas (404)
