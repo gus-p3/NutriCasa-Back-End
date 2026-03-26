@@ -14,7 +14,7 @@ export class HistoryController {
 
             res.json({
                 success: true,
-                data:    result,
+                data:    result.history,
             });
         } catch (error: any) {
             console.error('ERROR HISTORY:', error);
