@@ -11,7 +11,7 @@ export class RecipeIaServices {
             this.ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
         }
 
-        const numRecipes = Math.min(Math.max(1, count), 3); // Max 3 recipes allowed
+        const numRecipes = Math.min(Math.max(1, count), 3);
 
         const user = await User.findById(userId);
         if (!user) {
@@ -19,58 +19,60 @@ export class RecipeIaServices {
         }
 
         const inventory = await Inventory.findOne({ userId });
-        const inventoryItems = inventory ? inventory.items : [];
+        const inventoryItems = inventory?.items || [];
 
-        // Construir el contexto para Gemini
         const userProfileText = `
 Perfil Nutricional del Usuario:
-- Edad: ${user.profile.age || 'No especificado'}
-- Peso: ${user.profile.weight || 'No especificado'} kg
-- Altura: ${user.profile.height || 'No especificado'} cm
-- Nivel de actividad: ${user.profile.activityLevel}
-- Objetivo: ${user.profile.goal}
-- Tipo de dieta: ${user.profile.dietType}
-- Alergias: ${user.profile.allergies.length > 0 ? user.profile.allergies.join(', ') : 'Ninguna'}
-- Calorías diarias recomendadas: ${user.profile.dailyCalories} kcal
-- Macros: Proteína ${user.profile.macros.protein}g, Carbohidratos ${user.profile.macros.carbs}g, Grasas ${user.profile.macros.fat}g
+- Edad: ${user.profile?.age || 'No especificado'}
+- Peso: ${user.profile?.weight || 'No especificado'} kg
+- Altura: ${user.profile?.height || 'No especificado'} cm
+- Nivel de actividad: ${user.profile?.activityLevel || 'No especificado'}
+- Objetivo: ${user.profile?.goal || 'No especificado'}
+- Tipo de dieta: ${user.profile?.dietType || 'No especificado'}
+- Alergias: ${user.profile?.allergies?.length ? user.profile.allergies.join(', ') : 'Ninguna'}
+- Calorías diarias recomendadas: ${user.profile?.dailyCalories || 'No especificado'} kcal
+- Macros: Proteína ${user.profile?.macros?.protein || 0}g, Carbohidratos ${user.profile?.macros?.carbs || 0}g, Grasas ${user.profile?.macros?.fat || 0}g
 `;
 
         const inventoryText = inventoryItems.length > 0
-            ? `Ingredientes disponibles en el inventario:\n${inventoryItems.map(item => `- ${item.name} (${item.quantity} ${item.unit})`).join('\n')}`
+            ? `Ingredientes disponibles en el inventario:\n${inventoryItems.map((item: any) => `- ${item.name} (${item.quantity} ${item.unit})`).join('\n')}`
             : 'El usuario no tiene ingredientes registrados en su inventario. Debes sugerir recetas con ingredientes accesibles.';
+
+        const userPromptText = userPrompt?.trim() || 'Quiero opciones nuevas saludables';
 
         const systemPrompt = `
 Eres un chef experto en nutrición de NutriCasa.
 Tu tarea es generar exactamente ${numRecipes} receta(s) saludable(s) y diferente(s) en base al perfil nutricional del usuario y sus ingredientes disponibles, respetando sus alergias.
 
-Petición del usuario: "${userPrompt || 'Quiero opciones nuevas saludables'}"
+Petición del usuario: "${userPromptText}"
 
 ${userProfileText}
 
 ${inventoryText}
 
-Retorna la respuesta ESTRICTAMENTE en formato JSON plano como un ARREGLO de objetos, sin backticks (\`\`\`), sin comentarios adicionales y que cada objeto cumpla exactamente la siguiente estructura de TypeScript:
+Retorna la respuesta ESTRICTAMENTE en formato JSON plano como un ARREGLO de objetos, sin backticks, sin comentarios adicionales y que cada objeto cumpla exactamente la siguiente estructura:
+
 [
   {
     "title": "string (máximo 100 caracteres)",
-    "description": "string (máximo 500 caracteres, describe cómo esta receta ayuda a los objetivos del usuario)",
-    "imageUrl": "string (URL generada dinámicamente usando https://image.pollinations.ai/prompt/{descripcion_del_platillo_en_ingles_alta_calidad_fotografica})",
+    "description": "string (máximo 500 caracteres)",
+    "imageUrl": "string (URL generada con https://image.pollinations.ai/prompt/{descripcion_en_ingles})",
     "category": "desayuno" | "comida" | "cena" | "snack",
     "dietTypes": ["normal" | "vegetarian" | "vegan"],
-    "allergens": ["lista de alérgenos si los hay, string array"],
+    "allergens": ["string"],
     "ingredients": [
       {
         "name": "string",
         "quantity": number,
-        "unit": "string (ej: g, ml, piezas, tazas)",
-        "alternatives": ["string array opcional"]
+        "unit": "string",
+        "alternatives": ["string"]
       }
     ],
     "steps": [
       {
         "stepNumber": number,
         "description": "string",
-        "timerSeconds": number (opcional, en segundos si requiere tiempo exacto, o 0)
+        "timerSeconds": number
       }
     ],
     "nutrition": {
@@ -80,37 +82,37 @@ Retorna la respuesta ESTRICTAMENTE en formato JSON plano como un ARREGLO de obje
       "fat": number
     },
     "prepTimeMinutes": number,
-    "estimatedCost": number (estimado en MXN, usa un número razonable),
+    "estimatedCost": number,
     "difficulty": "fácil" | "media" | "difícil"
   }
 ]
-Asegúrate de que tus cálculos nutricionales sumen aproximadamente las calorías de "nutrition.calories" y que los pasos e ingredientes sean coherentes. Prioriza los ingredientes del inventario del usuario. Si generas más de una, hazlas variadas.
+
+Asegúrate de que los cálculos nutricionales sean coherentes. Prioriza los ingredientes del inventario del usuario.
 `;
 
-        // Llamar a Gemini
-        const response = await this.ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: systemPrompt,
-        });
-
-        const responseText = response.text || '';
-        
-        let generatedRecipes;
         try {
-            // Eliminar los backticks de markdown que suele agregar Gemini
-            const jsonMatch = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-            generatedRecipes = JSON.parse(jsonMatch);
-            
-            // Asegurarnos de que sea un array
-            if (!Array.isArray(generatedRecipes)) {
-                generatedRecipes = [generatedRecipes];
-            }
-        } catch (e) {
-            console.error('Error parseando JSON de Gemini:', responseText);
-            throw new Error('Error generando las recetas. Fallo al interpretar respuesta de IA.');
-        }
+            const response = await this.ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: [{ role: 'user', parts: [{ text: systemPrompt }] }],
+            });
 
-        return generatedRecipes;
+            const responseText = response.text || '';
+
+            let cleanText = responseText
+                .replace(/```json/g, '')
+                .replace(/```/g, '')
+                .trim();
+
+            const generatedRecipes = JSON.parse(cleanText);
+
+            const recipesArray = Array.isArray(generatedRecipes) ? generatedRecipes : [generatedRecipes];
+
+            return recipesArray.slice(0, numRecipes);
+
+        } catch (error: any) {
+            console.error('Error en generateRecipes:', error.message);
+            throw new Error(`Error generando las recetas: ${error.message}`);
+        }
     }
 
     async saveRecipe(recipeData: any) {
@@ -118,7 +120,6 @@ Asegúrate de que tus cálculos nutricionales sumen aproximadamente las caloría
             throw new Error('Datos de receta inválidos.');
         }
 
-        // Validar si ya existe
         const existingRecipe = await Recipe.findOne({ title: recipeData.title });
         if (existingRecipe) {
             return {
@@ -135,4 +136,92 @@ Asegúrate de que tus cálculos nutricionales sumen aproximadamente las caloría
             recipe: newRecipe
         };
     }
-}
+
+    async chatWithAssistant(userId: string, history: any[], message: string) {
+        if (!this.ai) {
+            this.ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        }
+
+        const user = await User.findById(userId);
+        const name = user?.name || 'Usuario';
+
+        const systemPrompt = `
+# Contexto General del Sistema: NutriCasa
+
+**Nombre de la Aplicación:** NutriCasa
+**Objetivo Principal:** NutriCasa es una plataforma integral de gestión alimentaria diseñada para ayudar a los usuarios a administrar las existencias de su alacena, descubrir recetas, seguir instrucciones paso a paso para cocinar y llevar un registro detallado de su consumo nutricional y económico.
+
+## Rol del Asistente
+Eres el "Asistente Virtual de NutriCasa". Tu objetivo es guiar, ayudar y resolver las dudas de los usuarios mientras navegan por la aplicación. Tienes que ser amigable, claro, conciso y motivador.
+
+## Flujos y Secciones Principales
+
+### 1. Autenticación (Login y Registro)
+- Registro de nuevos usuarios con datos personales
+- Inicio de sesión con correo y contraseña
+
+### 2. Dashboard (Inicio) - Ruta: /inicio
+Pantalla principal con resumen de actividad, recomendaciones y accesos directos
+
+### 3. Mi Alacena (Inventario) - Ruta: /inventory
+Gestión de ingredientes en casa. CRUD completo de productos con cantidades y unidades.
+
+### 4. Recetas (Explorar) - Ruta: /recipes
+Catálogo de recetas con filtros. Al seleccionar una, se muestra detalle nutricional y se compara con el inventario.
+
+### 5. Modo Cocinar - Ruta: /recipes/:id/cook
+Experiencia guiada paso a paso. Al finalizar, descuenta ingredientes y guarda en historial.
+
+### 6. Historial - Ruta: /history
+Registro de recetas cocinadas con:
+- Grid de tarjetas con imagen, clasificación, rating y fecha
+- KPIs: total recetas, rating promedio, calorías totales, gasto total
+- Filtros por tipo de comida y rating mínimo
+- Ordenamiento por fecha, rating o calorías
+- Modal de detalle con opción de guardar sobrantes al inventario
+
+### 7. AI Dashboard - Ruta: /ai-dashboard
+Generador de recetas con IA. Permite crear recetas personalizadas mediante prompts y guardarlas en la plataforma.
+
+## Directrices de Interacción
+1. Cuando el usuario no sepa qué comer: sugiere /recipes o /ai-dashboard
+2. Para sobrantes: recomienda usar el botón "Guardar sobrantes" en /history
+3. Mantén un tono amigable, claro y motivador
+4. Ayuda con navegación y resolución de dudas
+`;
+
+        try {
+            const contents: any[] = [];
+
+            if (!history || history.length === 0) {
+                contents.push({
+                    role: 'user',
+                    parts: [{ text: `Eres un asistente de NutriCasa. ${systemPrompt}\n\nEl usuario se llama ${name}. Salúdalo cordialmente y preséntate.` }]
+                });
+            } else {
+                for (const msg of history) {
+                    contents.push({
+                        role: msg.role === 'bot' ? 'model' : 'user',
+                        parts: [{ text: msg.text }]
+                    });
+                }
+            }
+
+            contents.push({
+                role: 'user',
+                parts: [{ text: message }]
+            });
+
+            const response = await this.ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: contents,
+            });
+
+            return response.text || "Lo siento, hubo un problema al procesar tu mensaje. ¿Podrías intentarlo de nuevo?";
+
+        } catch (error: any) {
+            console.error('Error en chatWithAssistant:', error.message);
+            return "Lo siento, estoy teniendo problemas para conectarme. Por favor, intenta de nuevo en unos momentos.";
+        }
+    }
+}      

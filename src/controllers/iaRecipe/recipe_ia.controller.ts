@@ -64,4 +64,28 @@ export class RecipeIaController {
             });
         }
     };
+
+    public chat = async (req: Request, res: Response): Promise<void> => {
+        try {
+            const userId = (req as any).userId;
+            const { message, history } = req.body;
+            
+            if (!message) {
+                res.status(400).json({ message: 'El mensaje es requerido.' });
+                return;
+            }
+
+            const responseText = await this.aiService.chatWithAssistant(userId, history || [], message);
+
+            res.status(200).json({
+                response: responseText
+            });
+
+        } catch (error: any) {
+            console.error('Error en IA Chat:', error);
+            res.status(500).json({ 
+                message: error.message || 'Error interno del servidor al interactuar con IA.', 
+            });
+        }
+    };
 }
