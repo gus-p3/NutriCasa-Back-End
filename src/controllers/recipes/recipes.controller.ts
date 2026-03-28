@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import Recipe from '../../models/Recipe.model';
 import { RecipesService } from '../../services/recipes/recipes.service';
 
 export class RecipesController {
@@ -206,6 +207,39 @@ export class RecipesController {
                 success: false,
                 message: error.message || 'Error al obtener alternativas',
             });
+        }
+    
+    }
+    static async getUserRecipes(req: Request, res: Response) {
+        try {
+            const userId = (req as any).userId;
+            if (!userId) {
+                return res.status(401).json({ success: false, message: 'No autorizado' });
+            }
+            const recipes = await Recipe.find({ 'createdBy.userId': userId }).sort({ createdAt: -1 });
+            res.status(200).json({ success: true, data: recipes, count: recipes.length });
+        } catch (error: any) {
+            res.status(500).json({ success: false, message: error.message || 'Error al obtener recetas' });
+        }
+    }
+
+    static async deleteRecipe(req: Request, res: Response) {
+        try {
+            const userId = (req as any).userId;
+            if (!userId) {
+                return res.status(401).json({ success: false, message: 'No autorizado' });
+            }
+            const recipe = await Recipe.findById(req.params.id);
+            if (!recipe) {
+                return res.status(404).json({ success: false, message: 'Receta no encontrada' });
+            }
+            if (!recipe.createdBy?.userId || recipe.createdBy.userId.toString() !== userId.toString()) {
+                return res.status(403).json({ success: false, message: 'No tienes permiso para eliminar esta receta' });
+            }
+            await recipe.deleteOne();
+            res.status(200).json({ success: true, message: 'Receta eliminada', data: { id: recipe._id, title: recipe.title } });
+        } catch (error: any) {
+            res.status(500).json({ success: false, message: error.message || 'Error al eliminar' });
         }
     }
 }
