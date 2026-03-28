@@ -1,54 +1,50 @@
-//dashboardController.ts
 import { Request, Response } from 'express';
-import NutritionLog          from '../models/NutritionLog.model';
-import Budget                from '../models/Budget.model';
-import Inventory             from '../models/Inventory.model';
-import Recipe                from '../models/Recipe.model';
-import User                  from '../models/User.model';
+import NutritionLog from '../models/NutritionLog.model';
+import Budget       from '../models/Budget.model';
+import Inventory    from '../models/Inventory.model';
+import Recipe       from '../models/Recipe.model';
+import User         from '../models/User.model';
 
-// ─── Helper: lunes de la semana actual a medianoche (hora local) ─────────────
+// ─── Helper: lunes de la semana actual ───────────────────────────────────────
 const getWeekStart = (): Date => {
-  const now  = new Date();
-  const day  = now.getDay();           // 0=dom … 6=sab
-  const diff = day === 0 ? -6 : 1 - day;
+  const now    = new Date();
+  const day    = now.getDay();
+  const diff   = day === 0 ? -6 : 1 - day;
   const monday = new Date(now);
   monday.setDate(now.getDate() + diff);
   monday.setHours(0, 0, 0, 0);
   return monday;
 };
 
-// ─── Helper: normalizar a medianoche ────────────────────────────────────────
+// ─── Helper: normalizar a medianoche ─────────────────────────────────────────
 const toMidnight = (date: Date): Date => {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
   return d;
 };
 
-// ─── Helper: estado de la barra de progreso ──────────────────────────────────
+// ─── Helper: estado barra de progreso ────────────────────────────────────────
 const getProgressStatus = (
   consumed: number,
   goal: number,
 ): 'sin_iniciar' | 'bajo' | 'en_progreso' | 'cumplido' | 'excedido' => {
   if (goal === 0) return 'sin_iniciar';
   const pct = (consumed / goal) * 100;
-  if (pct === 0)   return 'sin_iniciar';
-  if (pct < 40)    return 'bajo';
-  if (pct < 80)    return 'en_progreso';
-  if (pct <= 110)  return 'cumplido';
+  if (pct === 0)  return 'sin_iniciar';
+  if (pct < 40)   return 'bajo';
+  if (pct < 80)   return 'en_progreso';
+  if (pct <= 110) return 'cumplido';
   return 'excedido';
 };
 
-// ─── Helper: ¿se cumplió la meta calórica del día? ───────────────────────────
-// Cumplida = consumió entre el 90 % y el 110 % de la meta diaria.
+// ─── Helper: goalMet ─────────────────────────────────────────────────────────
 const calcGoalMet = (consumed: number, goal: number): boolean => {
   if (goal === 0) return false;
   const pct = (consumed / goal) * 100;
   return pct >= 90 && pct <= 110;
 };
 
-// ─── Función reutilizable por feedback.service ───────────────────────────────
-// Exportada para que POST /api/feedback llame a esto y devuelva el dashboard
-// recalculado sin duplicar lógica.
+// ─── Función reutilizable — usada también por feedback.service.ts ─────────────
 export const buildDashboardPayload = async (userId: string) => {
   const weekStart = getWeekStart();
   const today     = toMidnight(new Date());
@@ -58,13 +54,13 @@ export const buildDashboardPayload = async (userId: string) => {
 
   const dailyCaloriesGoal: number = user.profile.dailyCalories ?? 2000;
 
-  // ── NutritionLog: buscar o auto-crear con weekStart = lunes en curso ────────
+  // ── NutritionLog: buscar o crear ─────────────────────────────────────────
   let nutritionLog = await NutritionLog.findOne({ userId, weekStart });
   if (!nutritionLog) {
     nutritionLog = await NutritionLog.create({ userId, weekStart, days: [] });
   }
 
-  // ── Datos del día actual ────────────────────────────────────────────────────
+  // ── Datos del día actual ──────────────────────────────────────────────────
   const todayLog          = nutritionLog.days.find(
     d => toMidnight(d.date).getTime() === today.getTime(),
   );
@@ -87,7 +83,7 @@ export const buildDashboardPayload = async (userId: string) => {
     progressStatus: getProgressStatus(caloriesConsumed, dailyCaloriesGoal),
   };
 
-  // ── Resumen semanal ─────────────────────────────────────────────────────────
+  // ── Resumen semanal ───────────────────────────────────────────────────────
   const weekSummary = {
     weekStart,
     daysLogged:    nutritionLog.days.length,
@@ -101,7 +97,7 @@ export const buildDashboardPayload = async (userId: string) => {
     })),
   };
 
-  // ── Presupuesto ─────────────────────────────────────────────────────────────
+  // ── Presupuesto ───────────────────────────────────────────────────────────
   let budget = await Budget.findOne({ userId, weekStart });
   if (!budget && user.weeklyBudget > 0) {
     budget = await Budget.create({
@@ -125,8 +121,8 @@ export const buildDashboardPayload = async (userId: string) => {
       }
     : null;
 
-  // ── Top 3 recetas sugeridas ─────────────────────────────────────────────────
-  const inventory = await Inventory.findOne({ userId });
+  // ── Top 3 recetas sugeridas ───────────────────────────────────────────────
+  const inventory    = await Inventory.findOne({ userId });
   const inventoryMap = new Map<string, number>();
   inventory?.items.forEach(item => {
     inventoryMap.set(item.name.toLowerCase(), item.quantity);
@@ -142,14 +138,14 @@ export const buildDashboardPayload = async (userId: string) => {
 
   const scored = recipes
     .map(recipe => {
-      const total  = recipe.ingredients.length;
-      let green    = 0;
-      let yellow   = 0;
+      const total = recipe.ingredients.length;
+      let green   = 0;
+      let yellow  = 0;
 
       recipe.ingredients.forEach(ing => {
         const available = inventoryMap.get(ing.name.toLowerCase()) ?? 0;
-        if (available >= ing.quantity)  green++;
-        else if (available > 0)         yellow++;
+        if (available >= ing.quantity) green++;
+        else if (available > 0)        yellow++;
       });
 
       const matchPct  = total > 0 ? Math.round((green / total) * 100) : 0;
@@ -187,17 +183,25 @@ export const buildDashboardPayload = async (userId: string) => {
   };
 };
 
-// @route  GET /api/dashboard
-export const getDashboard = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const userId = (req as any).userId;
-    const payload = await buildDashboardPayload(userId);
-    res.status(200).json(payload);
-  } catch (error) {
-    console.error('ERROR DASHBOARD:', error);
-    res.status(500).json({
-      message: 'Error al cargar el dashboard',
-      error: error instanceof Error ? error.message : error,
-    });
+// ─── Controller ──────────────────────────────────────────────────────────────
+export class DashboardController {
+
+  // @route  GET /api/dashboard
+  static async getDashboard(req: Request, res: Response) {
+    try {
+      const userId  = (req as any).userId;
+      const payload = await buildDashboardPayload(userId);
+
+      res.status(200).json({
+        success: true,
+        data:    payload,
+      });
+    } catch (error: any) {
+      console.error('ERROR DASHBOARD:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Error al cargar el dashboard',
+      });
+    }
   }
-};
+}

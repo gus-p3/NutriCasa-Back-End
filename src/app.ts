@@ -55,7 +55,7 @@ class Server {
         // Rutas de la API
         this.app.use('/api/auth', authRoutes);
         this.app.use('/api/inventory', inventoryRoutes);
-        this.app.use('/api/recipes', recipesRoutes);6
+        this.app.use('/api/recipes', recipesRoutes);
         this.app.use('/api/dashboard', dashboardRoutes);
         this.app.use('/api/feedback', feedbackRoutes);
         this.app.use('/api/history', historyRoutes);
