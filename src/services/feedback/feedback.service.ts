@@ -1,9 +1,11 @@
+//feedback.service.ts
 import mongoose from 'mongoose';
-import CookingHistory from '../../models/CookingHistory.model';
-import Inventory      from '../../models/Inventory.model';
-import NutritionLog   from '../../models/NutritionLog.model';
-import Budget         from '../../models/Budget.model';
-import Recipe         from '../../models/Recipe.model';
+import CookingHistory            from '../../models/CookingHistory.model';
+import Inventory                 from '../../models/Inventory.model';
+import NutritionLog              from '../../models/NutritionLog.model';
+import Budget                    from '../../models/Budget.model';
+import Recipe                    from '../../models/Recipe.model';
+import { buildDashboardPayload } from '../../controllers/dashboardController';
 
 interface IIngredientUsedInput {
   name: string;
@@ -39,6 +41,22 @@ const toMidnight = (date: Date): Date => {
   return d;
 };
 
+// ─── Normalizar nombre de ingrediente (quitar tildes, plurales simples) ───────
+const normalizeString = (str: string): string => {
+  if (!str) return '';
+  let s = str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  if (s.endsWith('es') && s.length > 3) s = s.slice(0, -2);
+  else if (s.endsWith('s') && s.length > 2) s = s.slice(0, -1);
+  return s;
+};
+
+// ─── goalMet: cumplido si consumió entre 90 % y 110 % de la meta ─────────────
+const calcGoalMet = (consumed: number, goal: number): boolean => {
+  if (goal === 0) return false;
+  const pct = (consumed / goal) * 100;
+  return pct >= 90 && pct <= 110;
+};
+
 export class FeedbackService {
 
   static async submitFeedback(userId: string, input: IFeedbackInput) {
@@ -64,47 +82,34 @@ export class FeedbackService {
       mealTime,
     });
 
-    // ── 2. Actualizar inventario (descontar usados o guardar sobrantes) ────────
+    // ── 2. Actualizar inventario ──────────────────────────────────────────────
     const inventory = await Inventory.findOne({ userId });
     if (inventory) {
-      
-      const normalizeString = (str: string) => {
-        if (!str) return '';
-        let s = str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-        if (s.endsWith('es') && s.length > 3) s = s.slice(0, -2);
-        else if (s.endsWith('s') && s.length > 2) s = s.slice(0, -1);
-        return s;
-      };
-
       for (const used of ingredientsUsed) {
-        // Encuentra el coincidente exacto o normalizado
-        const usedNameNorm = normalizeString(used.name);
+        const usedNameNorm  = normalizeString(used.name);
         const inventoryItem = inventory.items.find(
-          item => normalizeString(item.name) === usedNameNorm
+          item => normalizeString(item.name) === usedNameNorm,
         );
 
-        // Procesar ingredientes de la despensa
         if (used.isFromPantry) {
           if (inventoryItem) {
             inventoryItem.quantity -= used.quantityUsed;
             if (inventoryItem.quantity < 0) inventoryItem.quantity = 0;
           }
         } else {
-          // No es de alacena: guardamos el sobrante si el usuario lo indicó
+          // Guardar sobrante si aplica
           if (used.saveLeftover && used.leftoverQuantity && used.leftoverQuantity > 0) {
             if (inventoryItem) {
               inventoryItem.quantity += used.leftoverQuantity;
             } else {
-              // Si no la conocemos, forzamos un valor por defecto para unidad/categoría válido
               const validUnits = ['g', 'kg', 'ml', 'l', 'piezas', 'tazas'];
-              const safeUnit = validUnits.includes(used.unit) ? used.unit : 'piezas';
-              
+              const safeUnit   = validUnits.includes(used.unit) ? used.unit : 'piezas';
               inventory.items.push({
-                name: used.name,
+                name:     used.name,
                 quantity: used.leftoverQuantity,
-                unit: safeUnit as any,
+                unit:     safeUnit as any,
                 category: 'otro',
-                addedAt: new Date(),
+                addedAt:  new Date(),
               } as any);
             }
           }
@@ -113,15 +118,19 @@ export class FeedbackService {
       await inventory.save();
     }
 
-    // ── 3. Actualizar nutritionlog del día actual ─────────────────────────────
-    // Buscar o crear el log de la semana
+    // ── 3. Actualizar nutritionlog ────────────────────────────────────────────
     let nutritionLog = await NutritionLog.findOne({ userId, weekStart });
     if (!nutritionLog) {
       nutritionLog = await NutritionLog.create({ userId, weekStart, days: [] });
     }
 
+    // Necesitamos la meta calórica del usuario para recalcular goalMet
+    const { default: User } = await import('../../models/User.model');
+    const user              = await User.findById(userId);
+    const dailyCaloriesGoal = user?.profile?.dailyCalories ?? 2000;
+
     const dayIndex = nutritionLog.days.findIndex(
-      d => toMidnight(d.date).getTime() === today.getTime()
+      d => toMidnight(d.date).getTime() === today.getTime(),
     );
 
     const newMeal = {
@@ -133,36 +142,40 @@ export class FeedbackService {
     };
 
     if (dayIndex === -1) {
-      // Día nuevo — agregar al array
+      // Primer registro del día
+      const caloriesConsumed = recipe.nutrition.calories;
       nutritionLog.days.push({
         date:             today,
-        caloriesConsumed: recipe.nutrition.calories,
+        caloriesConsumed,
         macros: {
           protein: recipe.nutrition.protein,
           carbs:   recipe.nutrition.carbs,
           fat:     recipe.nutrition.fat,
         },
         meals:   [newMeal],
-        goalMet: false,
+        goalMet: calcGoalMet(caloriesConsumed, dailyCaloriesGoal),
       });
     } else {
-      // Día existente — sumar calorías y macros, push a meals
+      // Día existente — acumular y recalcular goalMet
       nutritionLog.days[dayIndex].caloriesConsumed =
         (nutritionLog.days[dayIndex].caloriesConsumed ?? 0) + recipe.nutrition.calories;
       nutritionLog.days[dayIndex].macros.protein += recipe.nutrition.protein;
       nutritionLog.days[dayIndex].macros.carbs   += recipe.nutrition.carbs;
-      nutritionLog.days[dayIndex].macros.fat      += recipe.nutrition.fat;
+      nutritionLog.days[dayIndex].macros.fat     += recipe.nutrition.fat;
       nutritionLog.days[dayIndex].meals.push(newMeal);
+
+      // ← RECALCULAR goalMet con el total acumulado del día
+      nutritionLog.days[dayIndex].goalMet = calcGoalMet(
+        nutritionLog.days[dayIndex].caloriesConsumed!,
+        dailyCaloriesGoal,
+      );
     }
 
     await nutritionLog.save();
 
-    // ── 4. $push gasto en budgets y actualizar totalSpent / remaining ─────────
+    // ── 4. Actualizar budget ──────────────────────────────────────────────────
     let budget = await Budget.findOne({ userId, weekStart });
-
     if (!budget) {
-      const { default: User } = await import('../../models/User.model');
-      const user = await User.findById(userId);
       budget = await Budget.create({
         userId,
         weekStart,
@@ -183,24 +196,28 @@ export class FeedbackService {
     budget.remaining   = Math.max(0, budget.weeklyLimit - budget.totalSpent);
     await budget.save();
 
-    // ── 5. Actualizar ratings.average y ratings.count en recipe ──────────────
+    // ── 5. Actualizar ratings de la receta ────────────────────────────────────
     const newCount   = recipe.ratings.count + 1;
     const newAverage = parseFloat(
-      ((recipe.ratings.average * recipe.ratings.count + rating) / newCount).toFixed(1)
+      ((recipe.ratings.average * recipe.ratings.count + rating) / newCount).toFixed(1),
     );
     const updatedRecipe = await Recipe.findByIdAndUpdate(
       recipeId,
       { $set: { 'ratings.average': newAverage, 'ratings.count': newCount } },
-      { new: true }
+      { new: true },
     );
 
-    // ── Respuesta con los 4 documentos actualizados ───────────────────────────
+    // ── 6. Recalcular y devolver dashboard actualizado ────────────────────────
+    // El frontend puede sincronizar Zustand inmediatamente con este payload.
+    const dashboard = await buildDashboardPayload(userId);
+
     return {
       cookingHistory,
-      inventory: await Inventory.findOne({ userId }),
+      inventory:   await Inventory.findOne({ userId }),
       nutritionLog,
       budget,
-      recipe: updatedRecipe,
+      recipe:      updatedRecipe,
+      dashboard,   // ← NUEVO: dashboard recalculado listo para Zustand
     };
   }
 }

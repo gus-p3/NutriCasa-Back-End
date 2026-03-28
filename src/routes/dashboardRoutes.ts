@@ -1,9 +1,19 @@
-import { Router }       from 'express';
-import { getDashboard } from '../controllers/dashboardController';
-import { protect }      from '../middlewares/authMiddleware';
+import { Router }              from 'express';
+import { protect }             from '../middlewares/authMiddleware';
+import { DashboardController } from '../controllers/dashboardController';
 
-const router = Router();
+class DashboardRoutes {
+  public router: Router = Router();
 
-router.get('/', protect, getDashboard);
+  constructor() {
+    this.config();
+  }
 
-export default router;
+  config(): void {
+    // GET /api/dashboard
+    this.router.get('/', protect, DashboardController.getDashboard);
+  }
+}
+
+const dashboardRoutes = new DashboardRoutes();
+export default dashboardRoutes.router;

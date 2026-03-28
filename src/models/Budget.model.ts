@@ -1,3 +1,4 @@
+//Budget.model.ts
 import { Schema, model, Document, Types } from 'mongoose';
 
 export interface IExpense {
