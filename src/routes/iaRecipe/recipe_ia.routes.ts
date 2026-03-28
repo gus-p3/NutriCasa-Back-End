@@ -24,6 +24,13 @@ class RecipeIaRoutes {
             protect,
             this.controller.saveRecipe
         );
+
+        // Chatbot Assistant (Requiere Auth)
+        this.router.post(
+            '/chat',
+            protect,
+            this.controller.chat
+        );
     }
 }
 
