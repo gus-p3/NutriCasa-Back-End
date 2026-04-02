@@ -27,6 +27,13 @@ class RecipesRoutes {
       RecipesController.searchRecipes
     );
 
+    // GET /api/recipes/user - Recetas del usuario autenticado
+    this.router.get(
+      '/user',
+      protect,
+      RecipesController.getUserRecipes
+    );
+
     // GET /api/recipes/:id/alternatives?ingredientName=... - Sustitución de ingredientes
     this.router.get(
       '/:id/alternatives',
@@ -67,6 +74,13 @@ class RecipesRoutes {
       '/:id/check-availability',
       protect,
       RecipesController.checkIngredientsAvailability
+    );
+    // DELETE /api/recipes/:id - Eliminar receta propia
+    this.router.delete(
+      '/:id',
+      protect,
+      RecipesController.deleteRecipe
+      
     );
   }
 }

@@ -44,6 +44,10 @@ export interface IRecipe extends Document {
   estimatedCost: number;
   difficulty?: 'fácil' | 'media' | 'difícil';
   ratings: IRatings;
+  createdBy?: {
+    userId: Schema.Types.ObjectId;
+    name: string;
+  };
   createdAt?: Date;
   updatedAt?: Date;
   
@@ -136,9 +140,21 @@ const RecipeSchema = new Schema<IRecipe>(
     ratings: {
       average: { type: Number, default: 0, min: 0, max: 5 },
       count: { type: Number, default: 0, min: 0 }
-    }
+    },
+    createdBy: {
+      userId: {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+        required: false
+      },
+      name: {
+        type: String,
+        required: false,
+        trim: true
+      }
+    },
   },
-  { 
+  {
     timestamps: true,
     toJSON: { virtuals: true },
     toObject: { virtuals: true }
@@ -153,6 +169,7 @@ RecipeSchema.index({ 'ratings.average': -1 });
 RecipeSchema.index({ estimatedCost: 1 });
 RecipeSchema.index({ prepTimeMinutes: 1 });
 RecipeSchema.index({ difficulty: 1 });
+RecipeSchema.index({ 'createdBy.userId': 1 });
 
 // Métodos de instancia
 RecipeSchema.methods.calculateTotalTime = function(): number {
