@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import Recipe from '../../models/Recipe.model';
+import User from '../../models/User.model';
 import { RecipesService } from '../../services/recipes/recipes.service';
 
 export class RecipesController {
@@ -220,6 +221,95 @@ export class RecipesController {
             res.status(200).json({ success: true, data: recipes, count: recipes.length });
         } catch (error: any) {
             res.status(500).json({ success: false, message: error.message || 'Error al obtener recetas' });
+        }
+    }
+
+    static async createRecipe(req: Request, res: Response) {
+        try {
+            const userId = (req as any).userId;
+            if (!userId) {
+                return res.status(401).json({ success: false, message: 'No autorizado' });
+            }
+
+            const userData = await User.findById(userId);
+            const recipeData = req.body;
+
+            // Asegurar que el creador sea el usuario actual
+            recipeData.createdBy = {
+                userId: userId,
+                name: userData?.name || 'Usuario'
+            };
+
+            // Validaciones básicas manuales (Mongoose también validará)
+            if (!recipeData.title || !recipeData.ingredients || !recipeData.steps) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: 'Faltan campos requeridos (título, ingredientes, pasos)' 
+                });
+            }
+
+            const newRecipe = new Recipe(recipeData);
+            await newRecipe.save();
+
+            res.status(201).json({
+                success: true,
+                message: 'Receta creada exitosamente',
+                data: newRecipe
+            });
+        } catch (error: any) {
+            console.error(error);
+            res.status(500).json({
+                success: false,
+                message: error.message || 'Error al crear la receta'
+            });
+        }
+    }
+
+    static async updateRecipe(req: Request, res: Response) {
+        try {
+            const { id } = req.params;
+            const userId = (req as any).userId;
+            
+            if (!userId) {
+                return res.status(401).json({ success: false, message: 'No autorizado' });
+            }
+
+            const recipe = await Recipe.findById(id);
+
+            if (!recipe) {
+                return res.status(404).json({ success: false, message: 'Receta no encontrada' });
+            }
+
+            // Verificar propiedad
+            if (!recipe.createdBy?.userId || recipe.createdBy.userId.toString() !== userId.toString()) {
+                return res.status(403).json({ 
+                    success: false, 
+                    message: 'No tienes permiso para editar esta receta' 
+                });
+            }
+
+            // Actualizar campos
+            const updateData = req.body;
+            // No permitir cambiar el creador por seguridad
+            delete updateData.createdBy;
+
+            const updatedRecipe = await Recipe.findByIdAndUpdate(
+                id,
+                { $set: updateData },
+                { new: true, runValidators: true }
+            );
+
+            res.json({
+                success: true,
+                message: 'Receta actualizada exitosamente',
+                data: updatedRecipe
+            });
+        } catch (error: any) {
+            console.error(error);
+            res.status(500).json({
+                success: false,
+                message: error.message || 'Error al actualizar la receta'
+            });
         }
     }
 

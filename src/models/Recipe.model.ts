@@ -71,7 +71,7 @@ const RecipeSchema = new Schema<IRecipe>(
     },
     imageUrl: { 
       type: String,
-      match: [/^https?:\/\/.+/, 'URL de imagen inválida']
+      match: [/^https?:\/\/.+|^\/uploads\/.+/, 'URL de imagen inválida']
     },
     category: { 
       type: String, 
