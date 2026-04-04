@@ -13,6 +13,8 @@ import {
   resendCode,
   forgotPassword,
   resetPassword,
+  verify2FA,
+  toggle2FA,
 } from '../controllers/authController';
 import { protect } from '../middlewares/authMiddleware';
 import { validate } from '../middlewares/validate';
@@ -60,6 +62,15 @@ router.post('/verify',
   verifyEmail
 );
 
+router.post('/verify-2fa',
+  [
+    body('email').isEmail().withMessage('Email inválido'),
+    body('code').isLength({ min: 6, max: 6 }).withMessage('El código debe ser de 6 dígitos'),
+  ],
+  validate,
+  verify2FA
+);
+
 router.post('/resend-code',
   [body('email').isEmail().withMessage('Email inválido')],
   validate,
@@ -86,5 +97,6 @@ router.post('/reset-password',
 router.get('/me',         protect, getMe);
 router.put('/me',         protect, updateMe);
 router.put('/me/profile', protect, setupProfile);
+router.put('/me/2fa',     protect, toggle2FA);
 
 export default router;
