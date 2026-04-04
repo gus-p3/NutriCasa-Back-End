@@ -109,6 +109,26 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    // --- Lógica de 2FA ---
+    if (user.twoFactorEnabled) {
+      const twoFactorCode = Math.floor(100000 + Math.random() * 900000).toString();
+      user.twoFactorCode = twoFactorCode;
+      user.twoFactorExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutos
+      await user.save();
+
+      // Enviar código en segundo plano
+      EmailService.send2FACode(user.email, twoFactorCode).catch(err => {
+        console.error('BACKGROUND ERROR 2FA LOGIN EMAIL:', err);
+      });
+
+      res.status(200).json({ 
+        message: 'Se requiere verificación adicional. Revisa tu correo.', 
+        require2FA: true, 
+        email: user.email 
+      });
+      return;
+    }
+
     const accessToken = generateAccessToken(user._id.toString(), user.role);
     await issueRefreshToken(res, user._id.toString());
 
@@ -320,6 +340,64 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     res.status(200).json({ message: 'Contraseña actualizada exitosamente' });
   } catch (error) {
     console.error('ERROR RESET:', error);
+    res.status(500).json({ message: 'Error en el servidor' });
+  }
+};
+
+export const verify2FA = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, code } = req.body;
+
+    const user = await User.findOne({
+      email,
+      twoFactorCode: code,
+      twoFactorExpires: { $gt: new Date() }
+    });
+
+    if (!user) {
+      res.status(400).json({ message: 'Código de seguridad inválido o expirado' });
+      return;
+    }
+
+    // Limpiar código usado
+    user.twoFactorCode = undefined;
+    user.twoFactorExpires = undefined;
+    await user.save();
+
+    const accessToken = generateAccessToken(user._id.toString(), user.role);
+    await issueRefreshToken(res, user._id.toString());
+
+    res.status(200).json({
+      message: 'Verificación exitosa',
+      token: accessToken,
+      user: formatUser(user)
+    });
+  } catch (error) {
+    console.error('ERROR VERIFY 2FA:', error);
+    res.status(500).json({ message: 'Error en el servidor' });
+  }
+};
+
+export const toggle2FA = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = (req as any).userId;
+    const { enabled } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      res.status(404).json({ message: 'Usuario no encontrado' });
+      return;
+    }
+
+    user.twoFactorEnabled = !!enabled;
+    await user.save();
+
+    res.status(200).json({ 
+      message: enabled ? 'Autenticación de dos factores activada' : 'Autenticación de dos factores desactivada',
+      twoFactorEnabled: user.twoFactorEnabled 
+    });
+  } catch (error) {
+    console.error('ERROR TOGGLE 2FA:', error);
     res.status(500).json({ message: 'Error en el servidor' });
   }
 };
