@@ -1,9 +1,9 @@
-//app.ts
 import express, { Application } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import morgan from 'morgan';
+import path from 'path';
 import connectDB from './config/db';
 
 // Imports de Rutas
@@ -14,6 +14,7 @@ import recipesRoutes from './routes/recipes/recipes.routes';
 import feedbackRoutes from './routes/feedback/feedback.routes';
 import historyRoutes from './routes/history/history.routes';
 import aiRoutes from './routes/iaRecipe/recipe_ia.routes';
+import uploadRoutes from './routes/upload.routes';
 
 class Server {
     public app: Application;
@@ -40,6 +41,9 @@ class Server {
         this.app.use(express.json({ limit: '30mb' })); 
         this.app.use(express.urlencoded({ extended: false }));
         this.app.use(cookieParser());
+        
+        // Servir archivos estáticos de la carpeta uploads
+        this.app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
     }
 
     private routes(): void {
@@ -60,6 +64,7 @@ class Server {
         this.app.use('/api/feedback', feedbackRoutes);
         this.app.use('/api/history', historyRoutes);
         this.app.use('/api/ai', aiRoutes);
+        this.app.use('/api/upload', uploadRoutes);
 
         // Manejo de rutas no encontradas (404)
         this.app.use((req, res) => {

@@ -75,6 +75,20 @@ class RecipesRoutes {
       protect,
       RecipesController.checkIngredientsAvailability
     );
+    // POST /api/recipes - Crear receta propia
+    this.router.post(
+      '/',
+      protect,
+      RecipesController.createRecipe
+    );
+
+    // PUT /api/recipes/:id - Editar receta propia
+    this.router.put(
+      '/:id',
+      protect,
+      RecipesController.updateRecipe
+    );
+
     // DELETE /api/recipes/:id - Eliminar receta propia
     this.router.delete(
       '/:id',
