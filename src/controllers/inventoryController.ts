@@ -71,7 +71,7 @@ export const addItem = async (req: Request, res: Response): Promise<void> => {
           },
         },
       },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
 
     // Devolver el item recién agregado
@@ -115,7 +115,7 @@ export const updateItem = async (req: Request, res: Response): Promise<void> => 
     const updated = await Inventory.findOneAndUpdate(
       { userId, 'items._id': id },   // filtro con operador posicional
       { $set: setFields },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
 
     if (!updated) {

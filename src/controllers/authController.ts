@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import User from '../models/User.model';
 import RefreshToken from '../models/RefreshToken.model';
+import { EmailService } from '../services/emailService';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -59,11 +60,28 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const user = await User.create({ name, email, password });
-    const accessToken = generateAccessToken(user._id.toString(), user.role);
-    await issueRefreshToken(res, user._id.toString());
+    // Generar código de 6 dígitos
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const verificationCodeExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos
 
-    res.status(201).json({ message: 'Usuario registrado exitosamente', token: accessToken, user: formatUser(user) });
+    const user = await User.create({
+      name,
+      email,
+      password,
+      verificationCode,
+      verificationCodeExpires,
+      isVerified: false
+    });
+
+    // Enviar correo en segundo plano para no bloquear la respuesta
+    EmailService.sendVerificationCode(email, verificationCode).catch(err => {
+      console.error('BACKGROUND ERROR REGISTER EMAIL:', err);
+    });
+
+    res.status(201).json({
+      message: 'Usuario registrado. Por favor verifica tu correo.',
+      email: user.email
+    });
   } catch (error) {
     console.error('ERROR REGISTER:', error);
     res.status(500).json({ message: 'Error en el servidor', error: error instanceof Error ? error.message : error });
@@ -79,6 +97,15 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const user = await User.findOne({ email });
     if (!user || !(await user.comparePassword(password))) {
       res.status(401).json({ message: 'Credenciales inválidas' });
+      return;
+    }
+
+    if (!user.isVerified) {
+      res.status(403).json({
+        message: 'Tu cuenta no ha sido verificada. Por favor revisa tu correo.',
+        notVerified: true,
+        email: user.email
+      });
       return;
     }
 
@@ -176,6 +203,127 @@ export const logoutAll = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+// ─── Verification & Recovery ──────────────────────────────────────────────────
+
+export const verifyEmail = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, code } = req.body;
+
+    const user = await User.findOne({
+      email,
+      verificationCode: code,
+      verificationCodeExpires: { $gt: new Date() }
+    });
+
+    if (!user) {
+      res.status(400).json({ message: 'Código inválido o expirado' });
+      return;
+    }
+
+    user.isVerified = true;
+    user.verificationCode = undefined;
+    user.verificationCodeExpires = undefined;
+    await user.save();
+
+    const accessToken = generateAccessToken(user._id.toString(), user.role);
+    await issueRefreshToken(res, user._id.toString());
+
+    res.status(200).json({
+      message: 'Cuenta verificada exitosamente',
+      token: accessToken,
+      user: formatUser(user)
+    });
+  } catch (error) {
+    console.error('ERROR VERIFY:', error);
+    res.status(500).json({ message: 'Error en el servidor' });
+  }
+};
+
+export const resendCode = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      res.status(404).json({ message: 'Usuario no encontrado' });
+      return;
+    }
+
+    if (user.isVerified) {
+      res.status(400).json({ message: 'La cuenta ya está verificada' });
+      return;
+    }
+
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    user.verificationCode = verificationCode;
+    user.verificationCodeExpires = new Date(Date.now() + 15 * 60 * 1000);
+    await user.save();
+
+    // Enviar código en segundo plano
+    EmailService.sendVerificationCode(email, verificationCode).catch(err => {
+      console.error('BACKGROUND ERROR RESEND EMAIL:', err);
+    });
+    res.status(200).json({ message: 'Código reenviado' });
+  } catch (error) {
+    console.error('ERROR RESEND:', error);
+    res.status(500).json({ message: 'Error en el servidor' });
+  }
+};
+
+export const forgotPassword = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      // Por seguridad, no revelamos si el email existe o no
+      res.status(200).json({ message: 'Si el correo está registrado, recibirás un enlace pronto.' });
+      return;
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    user.resetPasswordToken = hash(resetToken);
+    user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hora
+    await user.save();
+
+    // Enviar enlace de recuperación en segundo plano
+    EmailService.sendResetPasswordLink(email, resetToken).catch(err => {
+      console.error('BACKGROUND ERROR FORGOT PASSWORD EMAIL:', err);
+    });
+    res.status(200).json({ message: 'Si el correo está registrado, recibirás un enlace pronto.' });
+  } catch (error) {
+    console.error('ERROR FORGOT:', error);
+    res.status(500).json({ message: 'Error en el servidor' });
+  }
+};
+
+export const resetPassword = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { token, newPassword } = req.body;
+    const tokenHash = hash(token);
+
+    const user = await User.findOne({
+      resetPasswordToken: tokenHash,
+      resetPasswordExpires: { $gt: new Date() }
+    });
+
+    if (!user) {
+      res.status(400).json({ message: 'Token inválido o expirado' });
+      return;
+    }
+
+    user.password = newPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    res.status(200).json({ message: 'Contraseña actualizada exitosamente' });
+  } catch (error) {
+    console.error('ERROR RESET:', error);
+    res.status(500).json({ message: 'Error en el servidor' });
+  }
+};
+
 // ─── /me routes (unchanged) ───────────────────────────────────────────────────
 
 export const getMe = async (req: Request, res: Response): Promise<void> => {
@@ -199,7 +347,7 @@ export const updateMe = async (req: Request, res: Response): Promise<void> => {
         .forEach(f => { if (profile[f] !== undefined) updateData[`profile.${f}`] = profile[f]; });
     }
     const user = await User.findByIdAndUpdate(
-      (req as any).userId, { $set: updateData }, { new: true, runValidators: true }
+      (req as any).userId, { $set: updateData }, { returnDocument: 'after', runValidators: true }
     ).select('-password');
     if (!user) { res.status(404).json({ message: 'Usuario no encontrado' }); return; }
     res.status(200).json({ message: 'Perfil actualizado', user });
@@ -237,7 +385,7 @@ export const setupProfile = async (req: Request, res: Response): Promise<void> =
         'profile.dietType': dietType, 'profile.allergies': allergies ?? [],
         'profile.dailyCalories': dailyCalories, 'profile.macros': macros,
       }},
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     ).select('-password');
 
     res.status(200).json({ message: 'Perfil nutricional configurado', user: updated, calculated: { dailyCalories, macros } });

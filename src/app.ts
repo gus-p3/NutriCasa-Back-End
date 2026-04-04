@@ -6,6 +6,8 @@ import morgan from 'morgan';
 import path from 'path';
 import connectDB from './config/db';
 
+dotenv.config();
+
 // Imports de Rutas
 import authRoutes from './routes/authRoutes';
 import inventoryRoutes from './routes/inventoryRoutes';
@@ -20,7 +22,6 @@ class Server {
     public app: Application;
 
     constructor() {
-        dotenv.config();
         this.app = express();
         this.config();
         this.routes();

@@ -22,6 +22,11 @@ export interface IUser extends Document {
     };
   };
   weeklyBudget: number;
+  isVerified: boolean;
+  verificationCode?: string;
+  verificationCodeExpires?: Date;
+  resetPasswordToken?: string;
+  resetPasswordExpires?: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
 }
 
@@ -47,6 +52,11 @@ const UserSchema = new Schema<IUser>(
       },
     },
     weeklyBudget: { type: Number, default: 0 },
+    isVerified:   { type: Boolean, default: false },
+    verificationCode: { type: String },
+    verificationCodeExpires: { type: Date },
+    resetPasswordToken: { type: String },
+    resetPasswordExpires: { type: Date },
   },
   { timestamps: true }
 );

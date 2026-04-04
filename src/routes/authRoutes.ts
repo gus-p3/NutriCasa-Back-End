@@ -9,6 +9,10 @@ import {
   refreshToken,
   logoutServer,
   logoutAll,
+  verifyEmail,
+  resendCode,
+  forgotPassword,
+  resetPassword,
 } from '../controllers/authController';
 import { protect } from '../middlewares/authMiddleware';
 import { validate } from '../middlewares/validate';
@@ -44,6 +48,38 @@ router.post('/logout', logoutServer);
 
 // Revoke ALL refresh tokens for this user (all devices)
 router.post('/logout-all', protect, logoutAll);
+
+// ─── Verification & Recovery ──────────────────────────────────────────────────
+
+router.post('/verify',
+  [
+    body('email').isEmail().withMessage('Email inválido'),
+    body('code').isLength({ min: 6, max: 6 }).withMessage('El código debe ser de 6 dígitos'),
+  ],
+  validate,
+  verifyEmail
+);
+
+router.post('/resend-code',
+  [body('email').isEmail().withMessage('Email inválido')],
+  validate,
+  resendCode
+);
+
+router.post('/forgot-password',
+  [body('email').isEmail().withMessage('Email inválido')],
+  validate,
+  forgotPassword
+);
+
+router.post('/reset-password',
+  [
+    body('token').notEmpty().withMessage('Token requerido'),
+    body('newPassword').isLength({ min: 6 }).withMessage('Mínimo 6 caracteres'),
+  ],
+  validate,
+  resetPassword
+);
 
 // ─── Protected routes ─────────────────────────────────────────────────────────
 
