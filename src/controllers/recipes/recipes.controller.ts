@@ -296,7 +296,7 @@ export class RecipesController {
             const updatedRecipe = await Recipe.findByIdAndUpdate(
                 id,
                 { $set: updateData },
-                { new: true, runValidators: true }
+                { returnDocument: 'after', runValidators: true }
             );
 
             res.json({

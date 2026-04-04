@@ -204,7 +204,7 @@ export class FeedbackService {
     const updatedRecipe = await Recipe.findByIdAndUpdate(
       recipeId,
       { $set: { 'ratings.average': newAverage, 'ratings.count': newCount } },
-      { new: true },
+      { returnDocument: 'after' },
     );
 
     // ── 6. Recalcular y devolver dashboard actualizado ────────────────────────
