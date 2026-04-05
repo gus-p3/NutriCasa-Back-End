@@ -2,6 +2,8 @@
 import User from '../../models/User.model';
 import Inventory from '../../models/Inventory.model';
 import Recipe from '../../models/Recipe.model';
+import CookingHistory from '../../models/CookingHistory.model';
+import NutritionLog from '../../models/NutritionLog.model';
 
 interface IngredientStatus {
     name: string;
@@ -471,15 +473,17 @@ export class RecipesService {
         };
     }
 
-    /**
-     * Marca una receta como completada y actualiza el inventario
-     */
     static async completeRecipe(recipeId: string, userId: string) {
         // 1. Obtener la receta
         const recipe = await Recipe.findById(recipeId).lean();
         if (!recipe) {
             throw new Error('Receta no encontrada');
         }
+
+        // 1.5 Obtener usuario para conocer sus metas
+        const user = await User.findById(userId).lean();
+        if (!user) throw new Error('Usuario no encontrado');
+        const dailyCaloriesGoal = user.profile?.dailyCalories ?? 2000;
 
         // 2. Obtener inventario del usuario
         const inventory = await Inventory.findOne({ userId });
@@ -531,9 +535,93 @@ export class RecipesService {
         inventory.updatedAt = new Date();
         await inventory.save();
 
+        // 5. Determinar mealTime basado en la hora actual
+        const hour = new Date().getHours();
+        let mealTime: 'desayuno' | 'comida' | 'cena' | 'snack';
+        if (hour >= 6 && hour < 12) mealTime = 'desayuno';
+        else if (hour >= 12 && hour < 17) mealTime = 'comida';
+        else if (hour >= 17 && hour < 22) mealTime = 'cena';
+        else mealTime = 'snack';
+
+        // 6. Crear entrada en CookingHistory
+        const ingredientsUsed = recipe.ingredients.map((ing: any) => ({
+            name: ing.name,
+            quantityUsed: ing.quantity,
+            unit: ing.unit,
+            leftover: 0
+        }));
+
+        await CookingHistory.create({
+            userId,
+            recipeId,
+            recipeName: recipe.title,
+            cookedAt: new Date(),
+            rating: 0,
+            ingredientsUsed,
+            estimatedCost: recipe.estimatedCost,
+            caloriesConsumed: recipe.nutrition.calories,
+            mealTime,
+        });
+
+        // 7. Actualizar NutritionLog
+        const now = new Date();
+        const getWeekStart = (): Date => {
+            const today = new Date(now);
+            const day = today.getDay();
+            const diff = day === 0 ? -6 : 1 - day;
+            const monday = new Date(today);
+            monday.setDate(today.getDate() + diff);
+            monday.setHours(0, 0, 0, 0);
+            return monday;
+        };
+        const weekStart = getWeekStart();
+        const toMidnight = (date: Date): Date => {
+            const d = new Date(date);
+            d.setHours(0, 0, 0, 0);
+            return d;
+        };
+        const todayMidnight = toMidnight(now);
+
+        let nutritionLog = await NutritionLog.findOne({ userId, weekStart });
+        if (!nutritionLog) {
+            nutritionLog = new NutritionLog({ userId, weekStart, days: [] });
+        }
+
+        let todayLogObj = nutritionLog.days.find(d => toMidnight(d.date).getTime() === todayMidnight.getTime());
+        if (!todayLogObj) {
+            nutritionLog.days.push({
+                date: todayMidnight,
+                caloriesConsumed: 0,
+                macros: { protein: 0, carbs: 0, fat: 0 },
+                meals: [],
+                goalMet: false
+            });
+            todayLogObj = nutritionLog.days[nutritionLog.days.length - 1];
+        }
+
+        // Agregar comida a hoy
+        todayLogObj.meals.push({
+            recipeId: (recipe as any)._id,
+            recipeName: recipe.title,
+            calories: recipe.nutrition.calories,
+            mealTime,
+            cookedAt: now
+        } as any);
+
+        todayLogObj.caloriesConsumed = (todayLogObj.caloriesConsumed || 0) + recipe.nutrition.calories;
+        todayLogObj.macros.protein += recipe.nutrition.protein || 0;
+        todayLogObj.macros.carbs += recipe.nutrition.carbs || 0;
+        todayLogObj.macros.fat += recipe.nutrition.fat || 0;
+
+        // Recalcular goalMet para hoy
+        const pct = (todayLogObj.caloriesConsumed / dailyCaloriesGoal) * 100;
+        todayLogObj.goalMet = pct >= 90 && pct <= 110;
+
+        await nutritionLog.save();
+
         return {
             success: true,
-            message: 'Receta completada. Inventario actualizado.',
+            message: 'Receta completada y agregada al progreso del Dashboard.',
             remainingItems: inventory.items.length
         };
     }

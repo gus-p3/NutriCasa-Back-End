@@ -54,7 +54,7 @@ const normalizeString = (str: string): string => {
 const calcGoalMet = (consumed: number, goal: number): boolean => {
   if (goal === 0) return false;
   const pct = (consumed / goal) * 100;
-  return pct >= 90 && pct <= 110;
+  return pct >= 100;
 };
 
 export class FeedbackService {
