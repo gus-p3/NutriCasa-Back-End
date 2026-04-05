@@ -39,9 +39,12 @@ const getProgressStatus = (
 
 // ─── Helper: goalMet ─────────────────────────────────────────────────────────
 const calcGoalMet = (consumed: number, goal: number): boolean => {
+  console.log(consumed);
+  console.log(goal);
   if (goal === 0) return false;
   const pct = (consumed / goal) * 100;
-  return pct >= 90 && pct <= 110;
+  console.log(pct);
+  return pct >= 100;
 };
 
 // ─── Función reutilizable — usada también por feedback.service.ts ─────────────
@@ -192,6 +195,7 @@ export class DashboardController {
       const userId  = (req as any).userId;
       const payload = await buildDashboardPayload(userId);
 
+      console.log(payload.week.days);
       res.status(200).json({
         success: true,
         data:    payload,

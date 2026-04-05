@@ -1,52 +1,71 @@
-import nodemailer from 'nodemailer';
+import nodemailer from 'nodemailer'; // Keeping import for types or later use if needed, though we will use fetch
 
 export class EmailService {
-  private static transporter: nodemailer.Transporter | null = null;
+  private static readonly API_URL = 'https://api.brevo.com/v3/smtp/email';
+  private static readonly API_KEY = process.env.EMAIL_PASS || '';
+  private static readonly SENDER_EMAIL = process.env.EMAIL_USER || 'nutricasa875@gmail.com';
+  private static readonly SENDER_NAME = 'NutriCasa';
 
-  private static getTransporter() {
-    if (!this.transporter) {
-      this.transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
+  /**
+   * Helper to send emails via Brevo API
+   */
+  private static async sendEmail(to: string, subject: string, html: string, senderName?: string) {
+    try {
+      console.log(`📧 Enviando email a: ${to} con asunto: "${subject}"...`);
+      
+      const response = await fetch(this.API_URL, {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+          'api-key': this.API_KEY,
+          'content-type': 'application/json',
         },
-        pool: true,
-        maxConnections: 5,
-        connectionTimeout: 10000,
+        body: JSON.stringify({
+          sender: {
+            name: senderName || this.SENDER_NAME,
+            email: this.SENDER_EMAIL,
+          },
+          to: [{ email: to }],
+          subject: subject,
+          htmlContent: html,
+        }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('❌ Error de Brevo API:', response.status, errorData);
+        throw new Error(`Error al enviar email: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log(`✅ Email enviado con éxito. ID: ${data.messageId}`);
+      return data;
+    } catch (error) {
+      console.error('❌ Error en EmailService:', error);
+      throw error;
     }
-    return this.transporter;
   }
+
   /**
    * Envía un código de verificación de 6 dígitos al correo del usuario.
    */
   static async sendVerificationCode(email: string, code: string) {
-    const mailOptions = {
-      from: `"NutriCasa" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: 'Verifica tu cuenta de NutriCasa',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e1e1e1; border-radius: 10px;">
-          <h2 style="color: #16a34a; text-align: center;">¡Bienvenido a NutriCasa!</h2>
-          <p>Gracias por unirte a nosotros. Para completar tu registro, por favor usa el siguiente código de verificación:</p>
-          <div style="background-color: #f0fdf4; padding: 20px; text-align: center; border-radius: 10px; margin: 20px 0;">
-            <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #15803d;">${code}</span>
-          </div>
-          <p style="color: #666; font-size: 14px;">Este código expirará en 15 minutos. Si no solicitaste esta cuenta, puedes ignorar este correo.</p>
-          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-          <p style="text-align: center; color: #999; font-size: 12px;">© 2024 NutriCasa - Tu salud es nuestra prioridad</p>
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e1e1e1; border-radius: 10px;">
+        <h2 style="color: #16a34a; text-align: center;">¡Bienvenido a NutriCasa!</h2>
+        <p>Gracias por unirte a nosotros. Para completar tu registro, por favor usa el siguiente código de verificación:</p>
+        <div style="background-color: #f0fdf4; padding: 20px; text-align: center; border-radius: 10px; margin: 20px 0;">
+          <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #15803d;">${code}</span>
         </div>
-      `,
-    };
+        <p style="color: #666; font-size: 14px;">Este código expirará en 15 minutos. Si no solicitaste esta cuenta, puedes ignorar este correo.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+        <p style="text-align: center; color: #999; font-size: 12px;">© 2024 NutriCasa - Tu salud es nuestra prioridad</p>
+      </div>
+    `;
 
     try {
-      console.log(`📧 Intentando enviar código de verificación a: ${email}...`);
-      const transporter = this.getTransporter();
-      await transporter.sendMail(mailOptions);
-      console.log(`✅ Email de verificación enviado a ${email}`);
+      await this.sendEmail(email, 'Verifica tu cuenta de NutriCasa', html);
     } catch (error) {
-      console.error('Error al enviar email de verificación:', error);
       throw new Error('No se pudo enviar el correo de verificación');
     }
   }
@@ -56,36 +75,26 @@ export class EmailService {
    */
   static async sendResetPasswordLink(email: string, token: string) {
     const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
-
-    const mailOptions = {
-      from: `"NutriCasa" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: 'Restablecer tu contraseña de NutriCasa',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e1e1e1; border-radius: 10px;">
-          <h2 style="color: #16a34a; text-align: center;">Restablecer Contraseña</h2>
-          <p>Has solicitado restablecer tu contraseña. Haz clic en el siguiente botón para continuar:</p>
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${resetUrl}" style="background-color: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
-              Restablecer Contraseña
-            </a>
-          </div>
-          <p style="color: #666; font-size: 14px;">Si el botón no funciona, copia y pega este enlace en tu navegador:</p>
-          <p style="word-break: break-all; color: #16a34a; font-size: 12px;">${resetUrl}</p>
-          <p style="color: #666; font-size: 14px; margin-top: 20px;">Este enlace expirará en 1 hora. Si no solicitaste este cambio, puedes ignorar este correo de forma segura.</p>
-          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-          <p style="text-align: center; color: #999; font-size: 12px;">© 2024 NutriCasa - Tu salud es nuestra prioridad</p>
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e1e1e1; border-radius: 10px;">
+        <h2 style="color: #16a34a; text-align: center;">Restablecer Contraseña</h2>
+        <p>Has solicitado restablecer tu contraseña. Haz clic en el siguiente botón para continuar:</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${resetUrl}" style="background-color: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+            Restablecer Contraseña
+          </a>
         </div>
-      `,
-    };
+        <p style="color: #666; font-size: 14px;">Si el botón no funciona, copia y pega este enlace en tu navegador:</p>
+        <p style="word-break: break-all; color: #16a34a; font-size: 12px;">${resetUrl}</p>
+        <p style="color: #666; font-size: 14px; margin-top: 20px;">Este enlace expirará en 1 hora. Si no solicitaste este cambio, puedes ignorar este correo de forma segura.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+        <p style="text-align: center; color: #999; font-size: 12px;">© 2024 NutriCasa - Tu salud es nuestra prioridad</p>
+      </div>
+    `;
 
     try {
-      console.log(`📧 Intentando enviar enlace de recuperación a: ${email}...`);
-      const transporter = this.getTransporter();
-      await transporter.sendMail(mailOptions);
-      console.log(`✅ Email de recuperación enviado a ${email}`);
+      await this.sendEmail(email, 'Restablecer tu contraseña de NutriCasa', html);
     } catch (error) {
-      console.error('Error al enviar email de recuperación:', error);
       throw new Error('No se pudo enviar el correo de recuperación');
     }
   }
@@ -94,32 +103,25 @@ export class EmailService {
    * Envía un código 2FA para el inicio de sesión.
    */
   static async send2FACode(email: string, code: string) {
-    const mailOptions = {
-      from: `"NutriCasa Seguridad" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: 'Tu código de seguridad de NutriCasa (MFA)',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e1e1e1; border-radius: 10px;">
-          <h2 style="color: #16a34a; text-align: center;">Verificación de Seguridad</h2>
-          <p>Se ha detectado un intento de inicio de sesión en tu cuenta. Usa este código para confirmar que eres tú:</p>
-          <div style="background-color: #f0fdf4; padding: 20px; text-align: center; border-radius: 10px; margin: 20px 0;">
-            <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #15803d;">${code}</span>
-          </div>
-          <p style="color: #666; font-size: 14px;">Este código expirará en 10 minutos. Si no has sido tú, te recomendamos cambiar tu contraseña de inmediato.</p>
-          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-          <p style="text-align: center; color: #999; font-size: 12px;">© 2024 NutriCasa - Protegiendo tu salud y tus datos</p>
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e1e1e1; border-radius: 10px;">
+        <h2 style="color: #16a34a; text-align: center;">Verificación de Seguridad</h2>
+        <p>Se ha detectado un intento de inicio de sesión en tu cuenta. Usa este código para confirmar que eres tú:</p>
+        <div style="background-color: #f0fdf4; padding: 20px; text-align: center; border-radius: 10px; margin: 20px 0;">
+          <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #15803d;">${code}</span>
         </div>
-      `,
-    };
+        <p style="color: #666; font-size: 14px;">Este código expirará en 10 minutos. Si no has sido tú, te recomendamos cambiar tu contraseña de inmediato.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+        <p style="text-align: center; color: #999; font-size: 12px;">© 2024 NutriCasa - Protegiendo tu salud y tus datos</p>
+      </div>
+    `;
 
     try {
-      console.log(`📧 Enviando código 2FA a: ${email}...`);
-      const transporter = this.getTransporter();
-      await transporter.sendMail(mailOptions);
-      console.log(`✅ Email 2FA enviado a ${email}`);
+      await this.sendEmail(email, 'Tu código de seguridad de NutriCasa (MFA)', html, 'NutriCasa Seguridad');
     } catch (error) {
+      // No lanzamos error para no bloquear el login
       console.error('Error al enviar email 2FA:', error);
-      // No lanzamos error para no bloquear el login, el usuario recibirá el error de "código no enviado" al intentar verificar
     }
   }
 }
+
