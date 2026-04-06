@@ -49,12 +49,13 @@ class Server {
 
         // Seguridad con Helmet (CSP, X-Frame-Options, HSTS, etc.)
         this.app.use(helmet({
+            crossOriginResourcePolicy: { policy: "cross-origin" },
             contentSecurityPolicy: {
                 directives: {
                     defaultSrc: ["'self'"],
                     scriptSrc: ["'self'", "'unsafe-inline'"],
                     styleSrc: ["'self'", "'unsafe-inline'"],
-                    imgSrc: ["'self'", "data:", "https:"],
+                    imgSrc: ["'self'", "data:", "https:", "http:"],
                     connectSrc: ["'self'", "https:", "http:"],
                 },
             },
