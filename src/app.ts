@@ -4,6 +4,10 @@ import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import morgan from 'morgan';
 import path from 'path';
+import fs from 'fs';
+import http from 'http';
+import https from 'https';
+import helmet from 'helmet';
 import connectDB from './config/db';
 
 dotenv.config();
@@ -38,10 +42,50 @@ class Server {
         // Configuraciones de puerto
         this.app.set('port', process.env.PORT || 3000);
 
-        // Middlewares
+        // Seguridad con Helmet (CSP, X-Frame-Options, HSTS, etc.)
+        this.app.use(helmet({
+            contentSecurityPolicy: {
+                directives: {
+                    defaultSrc: ["'self'"],
+                    scriptSrc: ["'self'", "'unsafe-inline'"],
+                    styleSrc: ["'self'", "'unsafe-inline'"],
+                    imgSrc: ["'self'", "data:", "https:"],
+                    connectSrc: ["'self'", "https:", "http:"],
+                },
+            },
+            frameguard: { action: 'deny' }, // X-Frame-Options: DENY
+            hidePoweredBy: true,
+            hsts: {
+                maxAge: 31536000, // 1 año en segundos
+                includeSubDomains: true,
+                preload: true
+            },
+            xContentTypeOptions: true, // nosniff
+        }));
+
         this.app.use(morgan('dev'));
+
+        // Forzar redirección HTTPS en Express
+        this.app.use((req, res, next) => {
+            // Si está siendo proxy por nginx/heroku que termine en HTTPS, o req.secure directo
+            if (process.env.NODE_ENV === 'production' && !req.secure && req.headers['x-forwarded-proto'] !== 'https') {
+                return res.redirect(301, 'https://' + req.headers.host + req.url);
+            }
+            next();
+        });
+
+        // Configurar CORS
+        const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:5173';
         this.app.use(cors({
-            origin: ['http://localhost:5173', 'https://nutricasa-front-end-production.up.railway.app'],
+            origin: (origin, callback) => {
+                // Listado de dominios locales/de produccion válidos
+                const whitelist = [allowedOrigin, 'http://localhost:5173'];
+                if (!origin || whitelist.includes(origin)) {
+                    callback(null, true);
+                } else {
+                    callback(new Error('No permitido por CORS'));
+                }
+            },
             credentials: true,
             methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
             allowedHeaders: ['Content-Type', 'Authorization'],
@@ -86,9 +130,31 @@ class Server {
         try {
             await connectDB();
             const PORT = this.app.get('port');
-            this.app.listen(PORT, '0.0.0.0', () => {
-                console.log(`⭐ Servidor Nutricasa corriendo en puerto ${PORT}`);
-            });
+
+            // Leer rutas de Let's Encrypt o credenciales SSL
+            const sslOptions = {
+                key: fs.existsSync('/etc/letsencrypt/live/nutricasa/privkey.pem') 
+                    ? fs.readFileSync('/etc/letsencrypt/live/nutricasa/privkey.pem') : undefined,
+                cert: fs.existsSync('/etc/letsencrypt/live/nutricasa/fullchain.pem') 
+                    ? fs.readFileSync('/etc/letsencrypt/live/nutricasa/fullchain.pem') : undefined,
+            };
+
+            // Arrancar HTTPS si están las llaves, sino HTTP estandar
+            if (sslOptions.key && sslOptions.cert && process.env.NODE_ENV === 'production') {
+                https.createServer(sslOptions, this.app).listen(443, '0.0.0.0', () => {
+                   console.log('⭐ Servidor Nutricasa corriendo en modo HTTPS (443) protegido con Let\'s Encrypt');
+                });
+                
+                // Servidor redireccionador en el puerto especificado u 80
+                http.createServer(this.app).listen(PORT, '0.0.0.0', () => {
+                    console.log(`⭐ Servidor Redireccionador HTTP corriendo en el puerto ${PORT}`);
+                });
+            } else {
+                http.createServer(this.app).listen(PORT, '0.0.0.0', () => {
+                    console.log(`⭐ Servidor Nutricasa corriendo en puerto HTTP inseguro ${PORT} (SSL no encontrado o entorno Dev)`);
+                });
+            }
+
         } catch (error) {
             console.error('❌ Error al iniciar el servidor:', error);
         }
