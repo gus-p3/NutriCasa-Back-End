@@ -8,6 +8,11 @@ import connectDB from './config/db';
 
 dotenv.config();
 
+if (!process.env.MONGO_URI || !process.env.JWT_SECRET) {
+    console.error('❌ FATAL ERROR: MONGO_URI y JWT_SECRET son obligatorios en las variables de entorno.');
+    process.exit(1);
+}
+
 // Imports de Rutas
 import authRoutes from './routes/authRoutes';
 import inventoryRoutes from './routes/inventoryRoutes';
@@ -17,6 +22,8 @@ import feedbackRoutes from './routes/feedback/feedback.routes';
 import historyRoutes from './routes/history/history.routes';
 import aiRoutes from './routes/iaRecipe/recipe_ia.routes';
 import uploadRoutes from './routes/upload.routes';
+import usersRoutes from './routes/users.routes';
+import { globalLimiter } from './middlewares/rateLimitMiddleware';
 
 class Server {
     public app: Application;
@@ -42,6 +49,7 @@ class Server {
         this.app.use(express.json({ limit: '30mb' })); 
         this.app.use(express.urlencoded({ extended: false }));
         this.app.use(cookieParser());
+        this.app.use(globalLimiter);
         
         // Servir archivos estáticos de la carpeta uploads
         this.app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -66,6 +74,7 @@ class Server {
         this.app.use('/api/history', historyRoutes);
         this.app.use('/api/ai', aiRoutes);
         this.app.use('/api/upload', uploadRoutes);
+        this.app.use('/api/users', usersRoutes);
 
         // Manejo de rutas no encontradas (404)
         this.app.use((req, res) => {
