@@ -12,6 +12,11 @@ import connectDB from './config/db';
 
 dotenv.config();
 
+// Leer rutas de Let's Encrypt o credenciales SSL
+const sslKeyPath = '/etc/letsencrypt/live/nutricasa/privkey.pem';
+const sslCertPath = '/etc/letsencrypt/live/nutricasa/fullchain.pem';
+const isSslEnabled = fs.existsSync(sslKeyPath) && fs.existsSync(sslCertPath);
+
 if (!process.env.MONGO_URI || !process.env.JWT_SECRET) {
     console.error('❌ FATAL ERROR: MONGO_URI y JWT_SECRET son obligatorios en las variables de entorno.');
     process.exit(1);
@@ -65,10 +70,9 @@ class Server {
 
         this.app.use(morgan('dev'));
 
-        // Forzar redirección HTTPS en Express
+        // Forzar redirección HTTPS en Express solo si el entorno expuso llaves SSL reales.
         this.app.use((req, res, next) => {
-            // Si está siendo proxy por nginx/heroku que termine en HTTPS, o req.secure directo
-            if (process.env.NODE_ENV === 'production' && !req.secure && req.headers['x-forwarded-proto'] !== 'https') {
+            if (process.env.NODE_ENV === 'production' && isSslEnabled && !req.secure && req.headers['x-forwarded-proto'] !== 'https') {
                 return res.redirect(301, 'https://' + req.headers.host + req.url);
             }
             next();
@@ -79,7 +83,7 @@ class Server {
         this.app.use(cors({
             origin: (origin, callback) => {
                 // Listado de dominios locales/de produccion válidos
-                const whitelist = [allowedOrigin, 'http://localhost:5173'];
+                const whitelist = [allowedOrigin, 'http://localhost:5173', 'http://localhost'];
                 if (!origin || whitelist.includes(origin)) {
                     callback(null, true);
                 } else {
@@ -133,10 +137,8 @@ class Server {
 
             // Leer rutas de Let's Encrypt o credenciales SSL
             const sslOptions = {
-                key: fs.existsSync('/etc/letsencrypt/live/nutricasa/privkey.pem') 
-                    ? fs.readFileSync('/etc/letsencrypt/live/nutricasa/privkey.pem') : undefined,
-                cert: fs.existsSync('/etc/letsencrypt/live/nutricasa/fullchain.pem') 
-                    ? fs.readFileSync('/etc/letsencrypt/live/nutricasa/fullchain.pem') : undefined,
+                key: isSslEnabled ? fs.readFileSync(sslKeyPath) : undefined,
+                cert: isSslEnabled ? fs.readFileSync(sslCertPath) : undefined,
             };
 
             // Arrancar HTTPS si están las llaves, sino HTTP estandar
