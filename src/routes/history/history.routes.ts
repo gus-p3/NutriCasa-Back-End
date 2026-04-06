@@ -1,5 +1,7 @@
 import { Router }            from 'express';
+import { param }             from 'express-validator';
 import { protect }           from '../../middlewares/authMiddleware';
+import { validate }          from '../../middlewares/validate';
 import { HistoryController } from '../../controllers/history/history.controller';
 
 class HistoryRoutes {
@@ -17,7 +19,15 @@ class HistoryRoutes {
         this.router.get('/', protect, HistoryController.getUserHistory);
 
         // GET /api/history/:id
-        this.router.get('/:id', protect, HistoryController.getHistoryById);
+        this.router.get(
+            '/:id', 
+            protect, 
+            [
+                param('id').isMongoId().withMessage('id inválido')
+            ],
+            validate,
+            HistoryController.getHistoryById
+        );
     }
 }
 

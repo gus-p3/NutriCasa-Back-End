@@ -18,14 +18,16 @@ import {
 } from '../controllers/authController';
 import { protect } from '../middlewares/authMiddleware';
 import { validate } from '../middlewares/validate';
+import { strictAuthLimiter } from '../middlewares/rateLimitMiddleware';
 
 const router = Router();
 
 // ─── Public routes ────────────────────────────────────────────────────────────
 
 router.post('/register',
+  strictAuthLimiter,
   [
-    body('name').trim().notEmpty().withMessage('El nombre es requerido'),
+    body('name').trim().notEmpty().withMessage('El nombre es requerido').escape(),
     body('email').isEmail().withMessage('Email inválido').normalizeEmail(),
     body('password').isLength({ min: 6 }).withMessage('La contraseña debe tener mínimo 6 caracteres'),
   ],
@@ -34,6 +36,7 @@ router.post('/register',
 );
 
 router.post('/login',
+  strictAuthLimiter,
   [
     body('email').isEmail().withMessage('Email inválido').normalizeEmail(),
     body('password').notEmpty().withMessage('La contraseña es requerida'),
@@ -54,38 +57,43 @@ router.post('/logout-all', protect, logoutAll);
 // ─── Verification & Recovery ──────────────────────────────────────────────────
 
 router.post('/verify',
+  strictAuthLimiter,
   [
-    body('email').isEmail().withMessage('Email inválido'),
-    body('code').isLength({ min: 6, max: 6 }).withMessage('El código debe ser de 6 dígitos'),
+    body('email').isEmail().withMessage('Email inválido').normalizeEmail(),
+    body('code').isLength({ min: 6, max: 6 }).withMessage('El código debe ser de 6 dígitos').escape(),
   ],
   validate,
   verifyEmail
 );
 
 router.post('/verify-2fa',
+  strictAuthLimiter,
   [
-    body('email').isEmail().withMessage('Email inválido'),
-    body('code').isLength({ min: 6, max: 6 }).withMessage('El código debe ser de 6 dígitos'),
+    body('email').isEmail().withMessage('Email inválido').normalizeEmail(),
+    body('code').isLength({ min: 6, max: 6 }).withMessage('El código debe ser de 6 dígitos').escape(),
   ],
   validate,
   verify2FA
 );
 
 router.post('/resend-code',
-  [body('email').isEmail().withMessage('Email inválido')],
+  strictAuthLimiter,
+  [body('email').isEmail().withMessage('Email inválido').normalizeEmail()],
   validate,
   resendCode
 );
 
 router.post('/forgot-password',
-  [body('email').isEmail().withMessage('Email inválido')],
+  strictAuthLimiter,
+  [body('email').isEmail().withMessage('Email inválido').normalizeEmail()],
   validate,
   forgotPassword
 );
 
 router.post('/reset-password',
+  strictAuthLimiter,
   [
-    body('token').notEmpty().withMessage('Token requerido'),
+    body('token').notEmpty().withMessage('Token requerido').escape(),
     body('newPassword').isLength({ min: 6 }).withMessage('Mínimo 6 caracteres'),
   ],
   validate,
