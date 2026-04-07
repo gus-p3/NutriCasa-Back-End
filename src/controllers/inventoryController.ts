@@ -1,3 +1,4 @@
+//inventoryController.ts
 import { Request, Response } from 'express';
 import { Types } from 'mongoose';
 import Inventory from '../models/Inventory.model';
