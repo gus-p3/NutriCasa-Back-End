@@ -46,6 +46,7 @@ const formatUser = (user: any) => ({
   role:         user.role,
   profile:      user.profile,
   weeklyBudget: user.weeklyBudget,
+  twoFactorEnabled: user.twoFactorEnabled,
 });
 
 // ─── Register ─────────────────────────────────────────────────────────────────
