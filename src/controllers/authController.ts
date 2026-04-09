@@ -342,7 +342,7 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     res.status(200).json({ message: 'Contraseña actualizada exitosamente' });
   } catch (error) {
     console.error('ERROR RESET:', error);
-    res.status(500).json({ message: 'Error en el servidor' });
+    res.status(500).json({ message: 'Error en el servidor', error: error instanceof Error ? error.message : error });
   }
 };
 
