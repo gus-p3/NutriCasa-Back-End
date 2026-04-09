@@ -298,20 +298,21 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
 
     if (!user) {
       // Por seguridad, no revelamos si el email existe o no
-      res.status(200).json({ message: 'Si el correo está registrado, recibirás un enlace pronto.' });
+      res.status(200).json({ message: 'Si el correo está registrado, recibirás un código pronto.' });
       return;
     }
 
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    user.resetPasswordToken = hash(resetToken);
-    user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hora
+    // Generar código de 6 dígitos
+    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+    user.resetPasswordCode = resetCode;
+    user.resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos
     await user.save();
 
-    // Enviar enlace de recuperación en segundo plano
-    EmailService.sendResetPasswordLink(email, resetToken).catch(err => {
+    // Enviar código por correo en segundo plano
+    EmailService.sendResetPasswordCode(email, resetCode).catch(err => {
       console.error('BACKGROUND ERROR FORGOT PASSWORD EMAIL:', err);
     });
-    res.status(200).json({ message: 'Si el correo está registrado, recibirás un enlace pronto.' });
+    res.status(200).json({ message: 'Si el correo está registrado, recibirás un código pronto.' });
   } catch (error) {
     console.error('ERROR FORGOT:', error);
     res.status(500).json({ message: 'Error en el servidor' });
@@ -320,21 +321,21 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
 
 export const resetPassword = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { token, newPassword } = req.body;
-    const tokenHash = hash(token);
+    const { email, code, newPassword } = req.body;
 
     const user = await User.findOne({
-      resetPasswordToken: tokenHash,
+      email,
+      resetPasswordCode: code,
       resetPasswordExpires: { $gt: new Date() }
     });
 
     if (!user) {
-      res.status(400).json({ message: 'Token inválido o expirado' });
+      res.status(400).json({ message: 'Código inválido o expirado' });
       return;
     }
 
     user.password = newPassword;
-    user.resetPasswordToken = undefined;
+    user.resetPasswordCode = undefined;
     user.resetPasswordExpires = undefined;
     await user.save();
 
