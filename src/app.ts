@@ -4,18 +4,13 @@ import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import morgan from 'morgan';
 import path from 'path';
-import fs from 'fs';
 import http from 'http';
-import https from 'https';
 import helmet from 'helmet';
 import connectDB from './config/db';
 
 dotenv.config();
 
-// Leer rutas de Let's Encrypt o credenciales SSL
-const sslKeyPath = '/etc/letsencrypt/live/nutricasa/privkey.pem';
-const sslCertPath = '/etc/letsencrypt/live/nutricasa/fullchain.pem';
-const isSslEnabled = fs.existsSync(sslKeyPath) && fs.existsSync(sslCertPath);
+
 
 if (!process.env.MONGO_URI || !process.env.JWT_SECRET) {
     console.error('❌ FATAL ERROR: MONGO_URI y JWT_SECRET son obligatorios en las variables de entorno.');
@@ -71,13 +66,6 @@ class Server {
 
         this.app.use(morgan('dev'));
 
-        // Forzar redirección HTTPS en Express solo si el entorno expuso llaves SSL reales.
-        this.app.use((req, res, next) => {
-            if (process.env.NODE_ENV === 'production' && isSslEnabled && !req.secure && req.headers['x-forwarded-proto'] !== 'https') {
-                return res.redirect(301, 'https://' + req.headers.host + req.url);
-            }
-            next();
-        });
 
         // Configurar CORS
         const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:5173';
@@ -136,27 +124,9 @@ class Server {
             await connectDB();
             const PORT = this.app.get('port');
 
-            // Leer rutas de Let's Encrypt o credenciales SSL
-            const sslOptions = {
-                key: isSslEnabled ? fs.readFileSync(sslKeyPath) : undefined,
-                cert: isSslEnabled ? fs.readFileSync(sslCertPath) : undefined,
-            };
-
-            // Arrancar HTTPS si están las llaves, sino HTTP estandar
-            if (sslOptions.key && sslOptions.cert && process.env.NODE_ENV === 'production') {
-                https.createServer(sslOptions, this.app).listen(443, '0.0.0.0', () => {
-                   console.log('⭐ Servidor Nutricasa corriendo en modo HTTPS (443) protegido con Let\'s Encrypt');
-                });
-                
-                // Servidor redireccionador en el puerto especificado u 80
-                http.createServer(this.app).listen(PORT, '0.0.0.0', () => {
-                    console.log(`⭐ Servidor Redireccionador HTTP corriendo en el puerto ${PORT}`);
-                });
-            } else {
-                http.createServer(this.app).listen(PORT, '0.0.0.0', () => {
-                    console.log(`⭐ Servidor Nutricasa corriendo en puerto HTTP inseguro ${PORT} (SSL no encontrado o entorno Dev)`);
-                });
-            }
+            http.createServer(this.app).listen(PORT, '0.0.0.0', () => {
+                console.log(`⭐ Servidor NutriCasa corriendo en puerto ${PORT}`);
+            });
 
         } catch (error) {
             console.error('❌ Error al iniciar el servidor:', error);

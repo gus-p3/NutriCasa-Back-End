@@ -92,7 +92,7 @@ Asegúrate de que los cálculos nutricionales sean coherentes. Prioriza los ingr
 
         try {
             const response = await this.ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model: 'gemini-1.5-flash',
                 contents: [{ role: 'user', parts: [{ text: systemPrompt }] }],
             });
 
@@ -213,7 +213,7 @@ Generador de recetas con IA. Permite crear recetas personalizadas mediante promp
             });
 
             const response = await this.ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model: 'gemini-1.5-flash',
                 contents: contents,
             });
 
