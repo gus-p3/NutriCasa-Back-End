@@ -25,7 +25,7 @@ export interface IUser extends Document {
   isVerified: boolean;
   verificationCode?: string;
   verificationCodeExpires?: Date;
-  resetPasswordToken?: string;
+  resetPasswordCode?: string;
   resetPasswordExpires?: Date;
   twoFactorEnabled: boolean;
   twoFactorCode?: string;
@@ -58,7 +58,7 @@ const UserSchema = new Schema<IUser>(
     isVerified:   { type: Boolean, default: false },
     verificationCode: { type: String },
     verificationCodeExpires: { type: Date },
-    resetPasswordToken: { type: String },
+    resetPasswordCode: { type: String },
     resetPasswordExpires: { type: Date },
     twoFactorEnabled: { type: Boolean, default: false },
     twoFactorCode: { type: String },

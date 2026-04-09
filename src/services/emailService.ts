@@ -71,29 +71,24 @@ export class EmailService {
   }
 
   /**
-   * Envía un enlace para restablecer la contraseña.
+   * Envía un código de 6 dígitos para restablecer la contraseña.
    */
-  static async sendResetPasswordLink(email: string, token: string) {
-    const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+  static async sendResetPasswordCode(email: string, code: string) {
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e1e1e1; border-radius: 10px;">
         <h2 style="color: #16a34a; text-align: center;">Restablecer Contraseña</h2>
-        <p>Has solicitado restablecer tu contraseña. Haz clic en el siguiente botón para continuar:</p>
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${resetUrl}" style="background-color: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
-            Restablecer Contraseña
-          </a>
+        <p>Has solicitado restablecer tu contraseña en NutriCasa. Usa el siguiente código para continuar:</p>
+        <div style="background-color: #f0fdf4; padding: 20px; text-align: center; border-radius: 10px; margin: 20px 0;">
+          <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #15803d;">${code}</span>
         </div>
-        <p style="color: #666; font-size: 14px;">Si el botón no funciona, copia y pega este enlace en tu navegador:</p>
-        <p style="word-break: break-all; color: #16a34a; font-size: 12px;">${resetUrl}</p>
-        <p style="color: #666; font-size: 14px; margin-top: 20px;">Este enlace expirará en 1 hora. Si no solicitaste este cambio, puedes ignorar este correo de forma segura.</p>
+        <p style="color: #666; font-size: 14px;">Este código expirará en <strong>15 minutos</strong>. Si no solicitaste este cambio, puedes ignorar este correo de forma segura.</p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
         <p style="text-align: center; color: #999; font-size: 12px;">© 2024 NutriCasa - Tu salud es nuestra prioridad</p>
       </div>
     `;
 
     try {
-      await this.sendEmail(email, 'Restablecer tu contraseña de NutriCasa', html);
+      await this.sendEmail(email, 'Código para restablecer tu contraseña de NutriCasa', html);
     } catch (error) {
       throw new Error('No se pudo enviar el correo de recuperación');
     }
