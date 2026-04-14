@@ -293,6 +293,14 @@ export class RecipesController {
             // No permitir cambiar el creador por seguridad
             delete updateData.createdBy;
 
+            // Sanitizar nutrición (evitar valores negativos que causen ValidationError)
+            if (updateData.nutrition) {
+                if (updateData.nutrition.calories !== undefined) updateData.nutrition.calories = Math.max(0, Number(updateData.nutrition.calories) || 0);
+                if (updateData.nutrition.protein !== undefined)  updateData.nutrition.protein  = Math.max(0, Number(updateData.nutrition.protein)  || 0);
+                if (updateData.nutrition.carbs !== undefined)    updateData.nutrition.carbs    = Math.max(0, Number(updateData.nutrition.carbs)    || 0);
+                if (updateData.nutrition.fat !== undefined)      updateData.nutrition.fat      = Math.max(0, Number(updateData.nutrition.fat)      || 0);
+            }
+
             const updatedRecipe = await Recipe.findByIdAndUpdate(
                 id,
                 { $set: updateData },
