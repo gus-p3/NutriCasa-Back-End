@@ -27,29 +27,31 @@ export class UsersController {
       if (name) user.name = name;
 
       if (profile) {
-        const p = profile;
-        user.profile = {
-          ...user.profile,
-          ...p
-        };
+        // Actualizar campos individuales para evitar sobreescribir subdocumentos enteros (como macros)
+        if (profile.age !== undefined) user.profile.age = Number(profile.age);
+        if (profile.weight !== undefined) user.profile.weight = Number(profile.weight);
+        if (profile.height !== undefined) user.profile.height = Number(profile.height);
+        if (profile.activityLevel !== undefined) user.profile.activityLevel = profile.activityLevel;
+        if (profile.goal !== undefined) user.profile.goal = profile.goal;
+        if (profile.dietType !== undefined) user.profile.dietType = profile.dietType;
+        if (profile.allergies !== undefined) user.profile.allergies = profile.allergies;
 
         // Recalcular Daily Calories (Harris-Benedict)
         const { weight, height, age, activityLevel, goal } = user.profile;
         if (weight && height && age) {
-          // Fórmula estandar para metabolismo basal (asumiendo genérico hombres/mujeres promediado u otra simplificación dictada en setupProfile)
-          // Usaremos la misma de setupProfile: 10 * weight + 6.25 * height - 5 * age
-          const bmr = 10 * weight + 6.25 * height - 5 * age + 5; // offset genérico
+          // Fórmula estándar para metabolismo basal
+          const bmr = 10 * weight + 6.25 * height - 5 * age + 5;
           const actMult: Record<string, number> = { low: 1.2, medium: 1.55, high: 1.9 };
           const goalAdj: Record<string, number> = { lose: -300, maintain: 0, gain: 300 };
 
           const dailyCalories = Math.round(bmr * (actMult[activityLevel ?? 'medium'] ?? 1.55) + (goalAdj[goal ?? 'maintain'] ?? 0));
           user.profile.dailyCalories = dailyCalories > 0 ? dailyCalories : 2000;
 
-          // Macros basados en la caloría
+          // Macros basados en la caloría, asegurando que no sean undefined
           user.profile.macros = {
-            protein: Math.round((user.profile.dailyCalories * 0.25) / 4),
-            carbs:   Math.round((user.profile.dailyCalories * 0.50) / 4),
-            fat:     Math.round((user.profile.dailyCalories * 0.25) / 9),
+            protein: Math.round((user.profile.dailyCalories * 0.25) / 4) || 0,
+            carbs:   Math.round((user.profile.dailyCalories * 0.50) / 4) || 0,
+            fat:     Math.round((user.profile.dailyCalories * 0.25) / 9) || 0,
           };
         }
       }
