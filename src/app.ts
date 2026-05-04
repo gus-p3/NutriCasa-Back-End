@@ -27,6 +27,7 @@ import historyRoutes from './routes/history/history.routes';
 import aiRoutes from './routes/iaRecipe/recipe_ia.routes';
 import uploadRoutes from './routes/upload.routes';
 import usersRoutes from './routes/users.routes';
+import commentRoutes from './controllers/comments/comment.routes';
 import { globalLimiter } from './middlewares/rateLimitMiddleware';
 
 class Server {
@@ -112,6 +113,7 @@ class Server {
         this.app.use('/api/ai', aiRoutes);
         this.app.use('/api/upload', uploadRoutes);
         this.app.use('/api/users', usersRoutes);
+        this.app.use('/api/comments', commentRoutes);
 
         // Manejo de rutas no encontradas (404)
         this.app.use((req, res) => {
